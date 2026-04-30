@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, 
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
-import { useUser } from '../../context/UserContext';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
+import { useAttendanceSession } from '../../hooks/useAttendanceSession';
+import { submitEmployeePunch } from '../../services/auth';
+import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
 
 // ── Types ──
 interface AttendanceRecord {
@@ -33,41 +34,19 @@ interface CorrectionRequest {
 // ── Mock Data ──
 const DEPARTMENTS = ['All', 'Engineering', 'Design', 'Product', 'Sales', 'HR'];
 
+// Fetch records from backend API instead of using static data
 const generateRecords = (): AttendanceRecord[] => {
-  const statuses: AttendanceRecord['status'][] = ['Present', 'Present', 'Present', 'Late', 'Present', 'Half Day', 'Absent'];
-  const records: AttendanceRecord[] = [];
-  const depts = ['Engineering', 'Design', 'Product', 'Sales', 'HR'];
-  for (let i = 0; i < 30; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const status = statuses[i % statuses.length];
-    records.push({
-      id: `rec-${i}`,
-      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      checkIn: status === 'Absent' ? '--' : (status === 'Late' ? '10:15 AM' : '09:05 AM'),
-      checkOut: status === 'Absent' ? '--' : (status === 'Half Day' ? '01:00 PM' : '06:02 PM'),
-      status,
-      hoursWorked: status === 'Absent' ? '0h' : (status === 'Half Day' ? '4h' : (status === 'Late' ? '6h 45m' : '8h 57m')),
-      department: depts[i % depts.length],
-    });
-  }
-  return records;
+  return [];
 };
 
-const INITIAL_CORRECTIONS: CorrectionRequest[] = [
-  { id: 'c1', date: 'Mar 20, 2026', originalTime: '10:15 AM', requestedTime: '09:05 AM', reason: 'Biometric failed, was present on time', status: 'Pending', type: 'Check-In', employee: 'You' },
-  { id: 'c2', date: 'Mar 18, 2026', originalTime: '--', requestedTime: '06:00 PM', reason: 'Forgot to check out', status: 'Pending', type: 'Check-Out', employee: 'You' },
-  { id: 'c3', date: 'Mar 15, 2026', originalTime: '09:30 AM', requestedTime: '09:00 AM', reason: 'System delay', status: 'Approved', type: 'Check-In', employee: 'You' },
-  { id: 'c4', date: 'Mar 12, 2026', originalTime: '10:00 AM', requestedTime: '09:00 AM', reason: 'Network issue', status: 'Rejected', type: 'Check-In', employee: 'You' },
-];
+// Fetch corrections from backend API instead of using static data
+const INITIAL_CORRECTIONS: CorrectionRequest[] = [];
 
 // ── Tab types ──
 type TimeTab = 'Daily' | 'Weekly' | 'Monthly';
 type CorrectionTab = 'Pending' | 'Approved' | 'Rejected';
 
 export default function AttendancePage() {
-  const { user } = useUser();
-
   // State
   const [allRecords] = useState<AttendanceRecord[]>(generateRecords);
   const [corrections, setCorrections] = useState<CorrectionRequest[]>(INITIAL_CORRECTIONS);
@@ -82,8 +61,17 @@ export default function AttendancePage() {
   const [rejectReason, setRejectReason] = useState('');
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [checkedIn, setCheckedIn] = useState(true);
-  const [checkedOut, setCheckedOut] = useState(false);
+  const [attendanceActionLoading, setAttendanceActionLoading] = useState(false);
+  const {
+    session,
+    loading: attendanceLoading,
+    recordCheckIn,
+    recordCheckOut,
+    canCheckIn,
+    canCheckOut,
+    isLockedForToday,
+    nextResetLabel,
+  } = useAttendanceSession();
 
   // ── Filtered Records ──
   const filteredRecords = useMemo(() => {
@@ -169,19 +157,83 @@ export default function AttendancePage() {
     }, 1500);
   }, []);
 
-  const handleCheckIn = useCallback(() => {
-    if (!checkedIn) {
-      setCheckedIn(true);
-      Alert.alert('✅ Checked In', `Check-in recorded at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`);
-    }
-  }, [checkedIn]);
+  const resolveCurrentLocation = useCallback(async () => getExactCurrentLocation(), []);
 
-  const handleCheckOut = useCallback(() => {
-    if (checkedIn && !checkedOut) {
-      setCheckedOut(true);
-      Alert.alert('✅ Checked Out', `Check-out recorded at ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`);
+  const handleCheckIn = useCallback(async () => {
+    if (!canCheckIn || attendanceLoading || attendanceActionLoading) {
+      return;
     }
-  }, [checkedIn, checkedOut]);
+
+    try {
+      setAttendanceActionLoading(true);
+      const now = new Date();
+      const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const location = await resolveCurrentLocation();
+      const snapshot = {
+        time,
+        location: formatExactLocationLabel(location),
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+
+      await submitEmployeePunch({
+        PunchType: 1,
+        Latitude: location.latitude,
+        Longitude: location.longitude,
+        WorkMode: 1,
+      });
+
+      await recordCheckIn(snapshot);
+      Alert.alert('Checked In', `Check-in recorded at ${time}.`);
+    } catch (error) {
+      Alert.alert('Location Required', error instanceof Error ? error.message : 'Unable to complete check-in.');
+    } finally {
+      setAttendanceActionLoading(false);
+    }
+  }, [attendanceActionLoading, attendanceLoading, canCheckIn, recordCheckIn, resolveCurrentLocation]);
+
+  const handleCheckOut = useCallback(async () => {
+    if (!canCheckOut || attendanceLoading || attendanceActionLoading) {
+      return;
+    }
+
+    try {
+      setAttendanceActionLoading(true);
+      const now = new Date();
+      const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const location = await resolveCurrentLocation();
+      const snapshot = {
+        time,
+        location: formatExactLocationLabel(location),
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+
+      await submitEmployeePunch({
+        PunchType: 2,
+        Latitude: location.latitude,
+        Longitude: location.longitude,
+        WorkMode: 1,
+      });
+
+      await recordCheckOut(snapshot);
+      Alert.alert('Checked Out', `Check-out recorded at ${time}. Next check-in unlocks at ${nextResetLabel}.`);
+    } catch (error) {
+      Alert.alert('Location Required', error instanceof Error ? error.message : 'Unable to complete check-out.');
+    } finally {
+      setAttendanceActionLoading(false);
+    }
+  }, [attendanceActionLoading, attendanceLoading, canCheckOut, nextResetLabel, recordCheckOut, resolveCurrentLocation]);
+
+  const checkedIn = session.checkedIn;
+  const checkedOut = session.checkedOut;
+  const checkInTime = session.checkInSnapshot?.time ?? '--';
+  const checkOutTime = session.checkOutSnapshot?.time ?? '--';
+  const attendanceBannerText = checkedOut
+    ? `Checked out for today. Available again at ${nextResetLabel}.`
+    : checkedIn
+      ? `Checked in at ${checkInTime}.`
+      : `Ready to check in. Daily reset happens at ${nextResetLabel}.`;
 
   // ── Status color helpers ──
   const getStatusColor = (status: string) => {
@@ -205,12 +257,12 @@ export default function AttendancePage() {
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {/* Check-in Toast */}
-        {checkedIn && (
+        {(checkedIn || checkedOut) && (
           <Animated.View entering={FadeInDown.duration(400)} style={styles.toast}>
             <View style={styles.toastIcon}>
-              <Ionicons name="checkmark-circle" size={18} color="#22c55e" />
+              <Ionicons name={checkedOut ? 'lock-closed' : 'checkmark-circle'} size={18} color={checkedOut ? '#2563eb' : '#22c55e'} />
             </View>
-            <Text style={styles.toastText}>Check-in successful at 09:05 AM</Text>
+            <Text style={[styles.toastText, checkedOut && styles.toastTextLocked]}>{attendanceBannerText}</Text>
           </Animated.View>
         )}
 
@@ -218,46 +270,69 @@ export default function AttendancePage() {
         <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.detailsCard}>
           <View style={styles.detailsHeader}>
             <View>
-              <Text style={styles.detailsSub}>Today's Details</Text>
+              <Text style={styles.detailsSub}>Today’s Details</Text>
               <Text style={styles.detailsDate}>{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: checkedOut ? '#dbeafe' : '#dcfce7' }]}>
-              <Text style={[styles.statusText, { color: checkedOut ? '#2563eb' : '#16a34a' }]}>{checkedOut ? 'COMPLETED' : 'PRESENT'}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: checkedOut ? '#dbeafe' : checkedIn ? '#dcfce7' : '#f1f5f9' }]}>
+              <Text style={[styles.statusText, { color: checkedOut ? '#2563eb' : checkedIn ? '#16a34a' : '#64748b' }]}>
+                {checkedOut ? 'COMPLETED' : checkedIn ? 'PRESENT' : 'READY'}
+              </Text>
             </View>
           </View>
           <View style={styles.checkRow}>
             <View style={styles.checkItem}>
               <Text style={styles.checkLabel}>CHECK-IN</Text>
-              <Text style={styles.checkTime}>{checkedIn ? '09:05 AM' : '--'}</Text>
+              <Text style={styles.checkTime}>{checkedIn ? checkInTime : '--'}</Text>
               <Text style={styles.checkStatus}>{checkedIn ? 'On Time' : 'Pending'}</Text>
             </View>
             <View style={styles.checkItem}>
               <Text style={styles.checkLabel}>CHECK-OUT</Text>
-              <Text style={styles.checkTime}>{checkedOut ? '06:02 PM' : '--'}</Text>
+              <Text style={styles.checkTime}>{checkedOut ? checkOutTime : '--'}</Text>
               <Text style={checkedOut ? styles.checkStatusCompleted : styles.checkStatus}>{checkedOut ? 'Completed' : 'Pending'}</Text>
             </View>
           </View>
         </Animated.View>
 
         {/* Action Buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, !checkedIn && styles.actionBtnActive]}
-            onPress={handleCheckIn}
-            disabled={checkedIn}
-          >
-            <Ionicons name="log-in-outline" size={24} color={checkedIn ? '#94a3b8' : '#fff'} />
-            <Text style={checkedIn ? styles.actionBtnTextDisabled : styles.actionBtnTextActive}>{checkedIn ? 'Checked In ✓' : 'Check In'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionBtn, checkedIn && !checkedOut && styles.actionBtnActive]}
-            onPress={handleCheckOut}
-            disabled={checkedOut || !checkedIn}
-          >
-            <Ionicons name="log-out-outline" size={24} color={checkedIn && !checkedOut ? '#fff' : '#94a3b8'} />
-            <Text style={checkedIn && !checkedOut ? styles.actionBtnTextActive : styles.actionBtnTextDisabled}>{checkedOut ? 'Checked Out ✓' : 'Check Out'}</Text>
-          </TouchableOpacity>
-        </View>
+        {isLockedForToday ? (
+          <View style={styles.actionRowSingle}>
+            <View style={[styles.actionBtn, styles.actionBtnLocked]}>
+              <Ionicons name="checkmark-circle-outline" size={22} color="#2563eb" />
+              <Text style={styles.actionBtnTextLocked}>Checked Out for Today</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.actionBtn, canCheckIn && styles.actionBtnActive]}
+              onPress={handleCheckIn}
+              disabled={!canCheckIn || attendanceLoading || attendanceActionLoading}
+            >
+              {attendanceActionLoading && canCheckIn ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="log-in-outline" size={24} color={canCheckIn ? '#fff' : '#94a3b8'} />
+              )}
+              <Text style={canCheckIn ? styles.actionBtnTextActive : styles.actionBtnTextDisabled}>
+                {checkedIn ? 'Checked In' : 'Check In'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, canCheckOut && styles.actionBtnActive]}
+              onPress={handleCheckOut}
+              disabled={!canCheckOut || attendanceLoading || attendanceActionLoading}
+            >
+              {attendanceActionLoading && canCheckOut ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Ionicons name="log-out-outline" size={24} color={canCheckOut ? '#fff' : '#94a3b8'} />
+              )}
+              <Text style={canCheckOut ? styles.actionBtnTextActive : styles.actionBtnTextDisabled}>
+                {checkedIn ? 'Check Out' : 'Check In First'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ═══ TIME TABS ═══ */}
         <View style={styles.section}>
@@ -289,7 +364,7 @@ export default function AttendancePage() {
 
           {/* Stats Summary */}
           <View style={styles.statsGrid}>
-            <View style={[styles.statCard, { borderLeftColor: '#4f46e5' }]}>
+            <View style={[styles.statCard, { borderLeftColor: '#007AFF' }]}>
               <Text style={styles.statValue}>{stats.attendanceRate}%</Text>
               <Text style={styles.statLabel}>Attendance</Text>
             </View>
@@ -391,7 +466,7 @@ export default function AttendancePage() {
                       <Ionicons
                         name={selectedIds.includes(correction.id) ? 'checkbox' : 'square-outline'}
                         size={22}
-                        color={selectedIds.includes(correction.id) ? '#4f46e5' : '#cbd5e1'}
+                        color={selectedIds.includes(correction.id) ? '#007AFF' : '#cbd5e1'}
                       />
                     </TouchableOpacity>
                   )}
@@ -413,7 +488,7 @@ export default function AttendancePage() {
                       <Ionicons name="arrow-forward" size={16} color="#94a3b8" />
                       <View style={styles.correctionTimeItem}>
                         <Text style={styles.correctionTimeLabel}>Requested</Text>
-                        <Text style={[styles.correctionTimeValue, { color: '#4f46e5' }]}>{correction.requestedTime}</Text>
+                        <Text style={[styles.correctionTimeValue, { color: '#007AFF' }]}>{correction.requestedTime}</Text>
                       </View>
                     </View>
                     <Text style={styles.correctionReason} numberOfLines={2}>Reason: {correction.reason}</Text>
@@ -430,7 +505,7 @@ export default function AttendancePage() {
                           <Text style={styles.rejectBtnText}>Reject</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.reviewBtn} onPress={() => handleReview(correction)}>
-                          <Ionicons name="eye-outline" size={16} color="#4f46e5" />
+                          <Ionicons name="eye-outline" size={16} color="#007AFF" />
                           <Text style={styles.reviewBtnText}>Review</Text>
                         </TouchableOpacity>
                       </View>
@@ -445,13 +520,13 @@ export default function AttendancePage() {
         {/* Shift & Schedule */}
         <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.shiftCard}>
           <View style={styles.shiftHeader}>
-            <Ionicons name="time-outline" size={20} color="#4f46e5" />
+            <Ionicons name="time-outline" size={20} color="#007AFF" />
             <Text style={styles.shiftTitle}>Shift & Schedule</Text>
           </View>
           <View style={styles.shiftBody}>
             <View style={styles.shiftInfo}>
               <Text style={styles.shiftLabel}>Standard Shift</Text>
-              <Text style={styles.shiftTime}>09:00 AM - 06:00 PM</Text>
+              <Text style={styles.shiftTime}>10:00 AM - 07:00 PM</Text>
               <Text style={styles.shiftDays}>Mon-Fri</Text>
             </View>
             <View style={styles.shiftDivider} />
@@ -468,14 +543,14 @@ export default function AttendancePage() {
           <Text style={styles.sectionTitle}>QUICK ACTIONS</Text>
           <TouchableOpacity style={styles.quickActionItem} onPress={() => router.push('/(employee)/attendance-history')}>
             <View style={[styles.quickActionIcon, { backgroundColor: '#eef2ff' }]}>
-              <Ionicons name="clipboard-outline" size={20} color="#4f46e5" />
+              <Ionicons name="clipboard-outline" size={20} color="#007AFF" />
             </View>
             <Text style={styles.quickActionText}>View Attendance History</Text>
             <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickActionItem} onPress={() => router.push('/(employee)/attendance-logging')}>
             <View style={[styles.quickActionIcon, { backgroundColor: '#fff7ed' }]}>
-              <Ionicons name="create-outline" size={20} color="#f97316" />
+              <Ionicons name="create-outline" size={20} color="#007AFF" />
             </View>
             <Text style={styles.quickActionText}>Attendance Correction</Text>
             <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
@@ -526,15 +601,15 @@ export default function AttendancePage() {
 
             <View style={styles.exportRow}>
               <TouchableOpacity style={styles.exportBtn} onPress={() => { Alert.alert('📄 PDF', 'Report exported as PDF'); setReportVisible(false); }}>
-                <Ionicons name="document-outline" size={18} color="#4f46e5" />
+                <Ionicons name="document-outline" size={18} color="#007AFF" />
                 <Text style={styles.exportBtnText}>PDF</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.exportBtn} onPress={() => { Alert.alert('📋 CSV', 'Report exported as CSV'); setReportVisible(false); }}>
-                <Ionicons name="grid-outline" size={18} color="#4f46e5" />
+                <Ionicons name="grid-outline" size={18} color="#007AFF" />
                 <Text style={styles.exportBtnText}>CSV</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.exportBtn} onPress={() => { Alert.alert('🔗 Share', 'Report sharing initiated'); setReportVisible(false); }}>
-                <Ionicons name="share-outline" size={18} color="#4f46e5" />
+                <Ionicons name="share-outline" size={18} color="#007AFF" />
                 <Text style={styles.exportBtnText}>Share</Text>
               </TouchableOpacity>
             </View>
@@ -587,7 +662,7 @@ export default function AttendancePage() {
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>Date</Text><Text style={styles.detailValue}>{selectedCorrection.date}</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>Type</Text><Text style={styles.detailValue}>{selectedCorrection.type}</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>Original Time</Text><Text style={styles.detailValue}>{selectedCorrection.originalTime}</Text></View>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>Requested Time</Text><Text style={[styles.detailValue, { color: '#4f46e5' }]}>{selectedCorrection.requestedTime}</Text></View>
+                <View style={styles.detailRow}><Text style={styles.detailLabel}>Requested Time</Text><Text style={[styles.detailValue, { color: '#007AFF' }]}>{selectedCorrection.requestedTime}</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>Difference</Text><Text style={styles.detailValue}>~1h 10m</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>Reason</Text><Text style={styles.detailValue}>{selectedCorrection.reason}</Text></View>
                 {selectedCorrection.status === 'Pending' && (
@@ -621,6 +696,7 @@ const styles = StyleSheet.create({
   toast: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f0fdf4', margin: 20, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#dcfce7' },
   toastIcon: { marginRight: 8 },
   toastText: { fontSize: 14, color: '#166534', fontWeight: '600' },
+  toastTextLocked: { color: '#1d4ed8' },
 
   // Details
   detailsCard: { backgroundColor: '#fff', marginHorizontal: 20, borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 10, elevation: 2, marginBottom: 20 },
@@ -638,10 +714,13 @@ const styles = StyleSheet.create({
 
   // Action Buttons
   actionRow: { flexDirection: 'row', marginHorizontal: 20, gap: 12, marginBottom: 20 },
+  actionRowSingle: { marginHorizontal: 20, marginBottom: 20 },
   actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#fff', gap: 8 },
-  actionBtnActive: { backgroundColor: '#4f46e5', borderColor: '#4f46e5', shadowColor: '#4f46e5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
+  actionBtnActive: { backgroundColor: '#007AFF', borderColor: '#007AFF', shadowColor: '#007AFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
+  actionBtnLocked: { flex: undefined, backgroundColor: '#eff6ff', borderColor: '#bfdbfe', justifyContent: 'flex-start', paddingHorizontal: 16, minHeight: 58 },
   actionBtnTextActive: { fontSize: 15, fontWeight: '700', color: '#fff' },
   actionBtnTextDisabled: { fontSize: 15, fontWeight: '700', color: '#94a3b8' },
+  actionBtnTextLocked: { fontSize: 15, fontWeight: '700', color: '#2563eb' },
 
   // Section
   section: { paddingHorizontal: 20, marginBottom: 24 },
@@ -650,16 +729,16 @@ const styles = StyleSheet.create({
   // Tabs
   tabRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   tabBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f1f5f9' },
-  tabBtnActive: { backgroundColor: '#4f46e5' },
+  tabBtnActive: { backgroundColor: '#007AFF' },
   tabBtnText: { fontSize: 13, fontWeight: '700', color: '#64748b' },
   tabBtnTextActive: { color: '#fff' },
 
   // Department Filter
   deptFilter: { marginBottom: 16 },
   deptChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', marginRight: 8 },
-  deptChipActive: { backgroundColor: '#eef2ff', borderColor: '#4f46e5' },
+  deptChipActive: { backgroundColor: '#eef2ff', borderColor: '#007AFF' },
   deptChipText: { fontSize: 12, fontWeight: '600', color: '#64748b' },
-  deptChipTextActive: { color: '#4f46e5' },
+  deptChipTextActive: { color: '#007AFF' },
 
   // Stats
   statsGrid: { flexDirection: 'row', gap: 8, marginBottom: 16 },
@@ -679,7 +758,7 @@ const styles = StyleSheet.create({
   recordBadgeText: { fontSize: 10, fontWeight: '800' },
 
   // Generate Report
-  generateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#4f46e5', paddingVertical: 14, borderRadius: 16, gap: 8, marginTop: 8, shadowColor: '#4f46e5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
+  generateBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#007AFF', paddingVertical: 14, borderRadius: 16, gap: 8, marginTop: 8, shadowColor: '#007AFF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
   generateBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   // Corrections
@@ -700,7 +779,7 @@ const styles = StyleSheet.create({
   rejectBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#fef2f2', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#fee2e2' },
   rejectBtnText: { fontSize: 12, fontWeight: '700', color: '#ef4444' },
   reviewBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#eef2ff', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#c7d2fe' },
-  reviewBtnText: { fontSize: 12, fontWeight: '700', color: '#4f46e5' },
+  reviewBtnText: { fontSize: 12, fontWeight: '700', color: '#007AFF' },
 
   // Bulk
   bulkRow: { marginBottom: 12 },
@@ -739,7 +818,7 @@ const styles = StyleSheet.create({
   reportLabel: { fontSize: 11, color: '#94a3b8', fontWeight: '700', marginTop: 4 },
   exportRow: { flexDirection: 'row', gap: 12, paddingBottom: Platform.OS === 'ios' ? 30 : 10 },
   exportBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc' },
-  exportBtnText: { fontSize: 14, fontWeight: '700', color: '#4f46e5' },
+  exportBtnText: { fontSize: 14, fontWeight: '700', color: '#007AFF' },
 
   // Reject Modal
   rejectModal: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },

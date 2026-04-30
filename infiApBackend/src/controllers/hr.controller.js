@@ -6,6 +6,7 @@ const Performance = require("../models/performance.model");
 const Payroll = require("../models/payroll.model");
 const Resignation = require("../models/resignation.model");
 const Holiday = require("../models/holiday.model");
+const Job = require("../models/job.model");
 
 // ---> Welcome Page Greeting <---
 exports.getDashboardSummary = async (req, res) => {
@@ -39,6 +40,36 @@ exports.getDashboardSummary = async (req, res) => {
                 greeting: "Welcome to HR Dashboard"
             }
         });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getHRAdminProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user?._id).select("-password -refreshToken");
+        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+        const hrProfile = {
+            header: {
+                profileImage: user.profileImage,
+                name: user.name,
+                post: user.designation || "HR Administrator",
+                hrId: user.employeeId
+            },
+            personalInfo: {
+                fullName: user.name,
+                joiningDate: user.joiningDate,
+                phoneNumber: user.phone,
+                emailId: user.email
+            },
+            administrativeAccess: {
+                accessLevel: user.role, // e.g. "hr", "admin"
+                complianceStatus: user.complianceStatus || "Compliant"
+            }
+        };
+
+        res.status(200).json({ success: true, data: hrProfile });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -127,7 +158,8 @@ exports.getEmployeeProfile = async (req, res) => {
             role: user.designation,
             manager: user.reportingManager,
             joiningDate: user.joiningDate,
-            employeeType: user.employmentType
+            employeeType: user.employmentType,
+            status: user.status || "Active"
         };
 
         // Real attendance calculation for current month
@@ -166,8 +198,9 @@ exports.getEmployeeProfile = async (req, res) => {
                 personalInfo,
                 jobDetails,
                 performance: performance || { message: "No performance data for current month" },
-                payrollAndSalary: {
-                    currentSalary: user.annualSalary ? Math.round(user.annualSalary / 12) : 0,
+                financial: {
+                    currentBaseSalary: user.currentBaseSalary || (user.annualSalary ? Math.round(user.annualSalary / 12) : 0),
+                    annualSalaryUSD: user.annualSalary || 0,
                     lastPayslip: payroll[0] || null
                 }
             }
@@ -578,6 +611,130 @@ exports.generateAttendanceReport = async (req, res) => {
 };
 
 // ---> HR Operations: Leaves <---
+
+// 1. Get All Pending Leaves (Detailed for Pending Page)
+exports.getPendingLeavesDetailed = async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const pendingLeaves = await LeaveApplication.find({ ApprovalStatus: "Awaiting Approve" })
+            .populate("EmployeeID", "name profileImage department employeeId")
+            .sort({ createdAt: -1 })
+            .skip(skip).limit(parseInt(limit));
+        
+        const total = await LeaveApplication.countDocuments({ ApprovalStatus: "Awaiting Approve" });
+
+        // Map data to include duration (number of days)
+        const detailedData = pendingLeaves.map(leave => {
+            const start = new Date(leave.StartDate);
+            const end = new Date(leave.EndDate);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+            return {
+                id: leave._id,
+                employeeProfile: leave.EmployeeID?.profileImage,
+                employeeName: leave.EmployeeID?.name,
+                employeeId: leave.EmployeeID?.employeeId,
+                department: leave.EmployeeID?.department,
+                leaveType: leave.LeaveType,
+                durationDays: leave.IsHalfDay ? 0.5 : diffDays,
+                startDate: leave.StartDate,
+                endDate: leave.EndDate,
+                appliedAt: leave.createdAt,
+                reason: leave.Reason
+            };
+        });
+
+        res.status(200).json({ 
+            success: true, 
+            data: detailedData,
+            pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 2. Get Leave Applications (with optional status filter: Pending, Approved, Rejected)
+exports.getLeaveApplications = async (req, res) => {
+    try {
+        const { status, page = 1, limit = 20 } = req.query;
+        const filter = {};
+        
+        // Map status names to ApprovalStatus strings
+        if (status === "Pending") filter.ApprovalStatus = "Awaiting Approve";
+        else if (status === "Approved") filter.ApprovalStatus = "Approved";
+        else if (status === "Rejected") filter.ApprovalStatus = "Rejected";
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const requests = await LeaveApplication.find(filter)
+            .populate("EmployeeID", "name department employeeId profileImage")
+            .sort({ createdAt: -1 })
+            .skip(skip).limit(parseInt(limit));
+        
+        const total = await LeaveApplication.countDocuments(filter);
+
+        res.status(200).json({ 
+            success: true, 
+            data: requests,
+            pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 2. Get Employees on Leave Today
+exports.getEmployeesOnLeaveToday = async (req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const activeLeaves = await LeaveApplication.find({
+            ApprovalStatus: "Approved",
+            StartDate: { $lte: today },
+            EndDate: { $gte: today }
+        }).populate("EmployeeID", "name department employeeId profileImage");
+
+        res.status(200).json({ success: true, data: activeLeaves });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 3. Get Leave Stats (Counts for Pending, Approved, Rejected, On Leave Today)
+exports.getLeaveStats = async (req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const [pendingCount, approvedCount, rejectedCount, onLeaveTodayCount] = await Promise.all([
+            LeaveApplication.countDocuments({ ApprovalStatus: "Awaiting Approve" }),
+            LeaveApplication.countDocuments({ ApprovalStatus: "Approved" }),
+            LeaveApplication.countDocuments({ ApprovalStatus: "Rejected" }),
+            LeaveApplication.countDocuments({
+                ApprovalStatus: "Approved",
+                StartDate: { $lte: today },
+                EndDate: { $gte: today }
+            })
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                pending: pendingCount,
+                approved: approvedCount,
+                rejected: rejectedCount,
+                onLeaveToday: onLeaveTodayCount
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 exports.getLeaveRequests = async (req, res) => {
     try {
         const requests = await LeaveApplication.find({ ApprovalStatus: "Awaiting Approve" }).populate("EmployeeID", "name department employeeId");
@@ -616,41 +773,489 @@ exports.getLeaveHistory = async (req, res) => {
     }
 };
 
-// ---> HR Operations: Recruitment <---
-exports.getRecruitmentDashboard = async (req, res) => {
+exports.generateLeaveReport = async (req, res) => {
     try {
-        const totalCandidates = await Candidate.countDocuments();
-        const hired = await Candidate.countDocuments({ status: "Hired" });
-        res.status(200).json({ success: true, data: { totalCandidates, hired } });
+        const { startDate, endDate, department, status, format = "json" } = req.body;
+        
+        let filter = { ApprovalStatus: { $ne: "Awaiting Approve" } }; // Focus on past records (Approved/Rejected)
+        
+        if (status) filter.ApprovalStatus = status;
+
+        if (startDate && endDate) {
+            filter.createdAt = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate + 'T23:59:59.999Z')
+            };
+        }
+
+        let applications = await LeaveApplication.find(filter)
+            .populate("EmployeeID", "name department employeeId")
+            .populate("ApproverID", "name")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Optional department filter
+        if (department) {
+            applications = applications.filter(app => app.EmployeeID?.department === department);
+        }
+
+        const reportData = applications.map(app => ({
+            id: app._id,
+            employeeName: app.EmployeeID?.name || "N/A",
+            employeeId: app.EmployeeID?.employeeId || "N/A",
+            department: app.EmployeeID?.department || "N/A",
+            leaveType: app.LeaveType,
+            reason: app.Reason,
+            startDate: app.StartDate,
+            endDate: app.EndDate,
+            status: app.ApprovalStatus, // Approved or Rejected
+            reviewedBy: app.ApproverID?.name || app.ApprovalUsername || "N/A",
+            appliedOn: app.createdAt
+        }));
+
+        res.status(200).json({
+            success: true,
+            report: {
+                title: "Leave History Report",
+                filters: { startDate, endDate, department, status },
+                totalRecords: reportData.length,
+                records: reportData
+            },
+            message: format === "pdf" || format === "excel" ? `${format.toUpperCase()} generation can be handled on client side using this data.` : "Report generated successfully"
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-exports.getCandidates = async (req, res) => {
+// ---> HR Operations: Recruitment <---
+
+// 1. Get Recruitment Dashboard Summary (Open Jobs, Candidates, Interview, Filled Roles)
+// 1. Get Recruitment Dashboard Summary
+exports.getRecruitmentDashboard = async (req, res) => {
     try {
-        const candidates = await Candidate.find();
+        const [openJobs, totalCandidates, interviewCount, filledRoles] = await Promise.all([
+            Job.countDocuments({ status: "Open" }),
+            Candidate.countDocuments(),
+            Candidate.countDocuments({ status: "Technical Interview" }),
+            Job.countDocuments({ status: "Hired" })
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: { openJobs, totalCandidates, interviewCount, filledRoles }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 2. Candidate Tracking — List all candidates with filters
+exports.getCandidateTrackingList = async (req, res) => {
+    try {
+        const { status, page = 1, limit = 10 } = req.query;
+        const filter = {};
+        if (status) filter.status = status;
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const candidates = await Candidate.find(filter)
+            .select("applicantName profileImage jobTitle yearsOfExperience appliedDate status")
+            .sort({ appliedDate: -1 })
+            .skip(skip).limit(parseInt(limit));
+        
+        const total = await Candidate.countDocuments(filter);
+
+        res.status(200).json({
+            success: true,
+            data: candidates,
+            pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 3. View Candidate Profile — Detailed view
+exports.getCandidateProfile = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const candidate = await Candidate.findById(id).populate("jobId");
+        if (!candidate) return res.status(404).json({ success: false, message: "Candidate not found" });
+
+        res.status(200).json({ success: true, data: candidate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 4. Shortlist Candidate
+exports.shortlistCandidate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const candidate = await Candidate.findByIdAndUpdate(id, { 
+            status: "Shortlisted",
+            $push: { recruitmentProgress: { stage: "Shortlisted", remarks: "Candidate shortlisted for technical round" } }
+        }, { new: true });
+        res.status(200).json({ success: true, message: "Candidate shortlisted", data: candidate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 5. Reject Candidate
+exports.rejectCandidate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const candidate = await Candidate.findByIdAndUpdate(id, { 
+            status: "Rejected",
+            $push: { recruitmentProgress: { stage: "Rejected", remarks: reason || "Does not meet requirements" } }
+        }, { new: true });
+        res.status(200).json({ success: true, message: "Candidate rejected", data: candidate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 6. Technical Interview Stage
+exports.updateTechnicalInterview = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, interviewer, score, feedback, passed } = req.body;
+        
+        const status = passed ? "Selected" : "Rejected";
+        const progressStage = passed ? "Technical Interview Passed" : "Technical Interview Failed";
+
+        const candidate = await Candidate.findByIdAndUpdate(id, {
+            status: passed ? "Selected" : "Rejected",
+            technicalInterview: { date, interviewer, score, feedback, status: passed ? "Passed" : "Failed" },
+            $push: { recruitmentProgress: { stage: progressStage, remarks: feedback } }
+        }, { new: true });
+
+        res.status(200).json({ success: true, message: "Technical interview updated", data: candidate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 7. Select Candidate (Move to Offer Stage)
+exports.selectCandidate = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const candidate = await Candidate.findByIdAndUpdate(id, { 
+            status: "Selected",
+            $push: { recruitmentProgress: { stage: "Selected", remarks: "Final selection completed" } }
+        }, { new: true });
+        res.status(200).json({ success: true, message: "Candidate selected", data: candidate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 8. Send Offer Letter (Trigger logic)
+exports.sendOfferLetter = async (req, res) => {
+    try {
+        const { id } = req.params;
+        // Placeholder for logic (e.g., email service)
+        const candidate = await Candidate.findByIdAndUpdate(id, { 
+            $push: { recruitmentProgress: { stage: "Offer Sent", remarks: "Offer letter sent via email" } }
+        }, { new: true });
+        res.status(200).json({ success: true, message: "Offer letter sent successfully", data: candidate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 9. Get Recent Candidates
+exports.getRecentCandidatesDetail = async (req, res) => {
+    try {
+        const candidates = await Candidate.find()
+            .sort({ appliedDate: -1 })
+            .limit(10)
+            .select("applicantName profileImage status jobTitle yearsOfExperience location appliedDate");
+
         res.status(200).json({ success: true, data: candidates });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-exports.getApplications = async (req, res) => {
+// 10. Review Applications — New applications needing attention
+exports.getReviewApplications = async (req, res) => {
     try {
-        // Can filter out 'Applied' status specifically
-        const apps = await Candidate.find({ status: "Applied" });
-        res.status(200).json({ success: true, data: apps });
+        const { page = 1, limit = 10 } = req.query;
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        // Fetch only those in 'Applied' status and populate Job details
+        const applications = await Candidate.find({ status: "Applied" })
+            .populate("jobId", "department type") // team and work mode
+            .sort({ appliedDate: -1 })
+            .skip(skip).limit(parseInt(limit));
+        
+        const total = await Candidate.countDocuments({ status: "Applied" });
+
+        res.status(200).json({
+            success: true,
+            data: applications,
+            pagination: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 11. Schedule Interview Action
+exports.scheduleTechnicalInterview = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { date, interviewer } = req.body;
+
+        const candidate = await Candidate.findByIdAndUpdate(id, { 
+            status: "Technical Interview",
+            "technicalInterview.date": date,
+            "technicalInterview.interviewer": interviewer,
+            $push: { recruitmentProgress: { stage: "Interview Scheduled", remarks: `Technical interview scheduled with ${interviewer} on ${date}` } }
+        }, { new: true });
+
+        res.status(200).json({ success: true, message: "Interview scheduled", data: candidate });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 12. Job Management (Internal for HR)
+exports.addJob = async (req, res) => {
+    try {
+        const job = new Job(req.body);
+        await job.save();
+        res.status(201).json({ success: true, message: "Job posted", data: job });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.getJobs = async (req, res) => {
+    try {
+        const jobs = await Job.find().sort({ createdAt: -1 });
+        res.status(200).json({ success: true, data: jobs });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
 // ---> HR Operations: Performance <---
+
+// 1. Performance Dashboard Stats (Monthly)
 exports.getPerformanceDashboard = async (req, res) => {
     try {
-        const perfs = await Performance.find().populate("userId", "name department");
-        res.status(200).json({ success: true, data: perfs });
+        const { month, year } = req.query; // e.g. "2023-10", 2023
+        const filter = {};
+        if (month) filter.month = month;
+        if (year) filter.year = parseInt(year);
+
+        const performances = await Performance.find(filter).populate("userId", "name department");
+
+        if (performances.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: { averageScore: 0, topPerformer: null, onTarget: 0, belowTarget: 0 }
+            });
+        }
+
+        let totalScore = 0;
+        let topPerformer = performances[0];
+        let onTargetCount = 0;
+        let belowTargetCount = 0;
+
+        performances.forEach(p => {
+            totalScore += p.overallScore;
+            // Top performer check
+            if (p.overallScore > topPerformer.overallScore) {
+                topPerformer = p;
+            }
+            // Status check
+            if (p.status === "On Target" || p.status === "Exceeding") {
+                onTargetCount++;
+            } else {
+                belowTargetCount++;
+            }
+        });
+
+        res.status(200).json({
+            success: true,
+            data: {
+                averageScore: (totalScore / performances.length).toFixed(1),
+                topPerformer: {
+                    name: topPerformer.userId?.name,
+                    department: topPerformer.userId?.department,
+                    score: topPerformer.overallScore.toFixed(1)
+                },
+                onTarget: onTargetCount,
+                belowTarget: belowTargetCount
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 2. Performance Employee List
+exports.getPerformanceList = async (req, res) => {
+    try {
+        const { month, department } = req.query;
+        let query = {};
+        if (month) query.month = month;
+
+        let perfs = await Performance.find(query)
+            .populate("userId", "name department profileImage")
+            .sort({ overallScore: -1 });
+
+        // Filter by department if provided (since department is in the populated User model)
+        if (department) {
+            perfs = perfs.filter(p => p.userId && p.userId.department === department);
+        }
+
+        const data = perfs.map(p => ({
+            id: p._id,
+            profileImage: p.userId?.profileImage,
+            name: p.userId?.name,
+            department: p.userId?.department,
+            score: p.overallScore.toFixed(1),
+            progress: p.targetPercentage, // target completion %
+            status: p.status
+        }));
+
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 3. Performance Feedback Section Summary
+exports.getPerformanceFeedbackStats = async (req, res) => {
+    try {
+        const stats = await Performance.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    avgRating: { $avg: "$rating" },
+                    completedCount: { $count: {} }
+                }
+            }
+        ]);
+
+        const result = stats.length > 0 ? {
+            avgRating: stats[0].avgRating.toFixed(1),
+            completedReviews: stats[0].completedCount
+        } : { avgRating: 0, completedReviews: 0 };
+
+        res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 4. Performance Recent Reviews List
+exports.getRecentFeedbackList = async (req, res) => {
+    try {
+        const reviews = await Performance.find()
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .populate("userId", "name department profileImage")
+            .populate("reviewer", "name designation");
+
+        const data = reviews.map(r => ({
+            id: r._id,
+            profileImage: r.userId?.profileImage,
+            name: r.userId?.name,
+            department: r.userId?.department,
+            status: "Completed",
+            reviewName: r.reviewTitle || "Monthly Performance Review",
+            jobRole: r.userId?.designation || "Employee",
+            description: r.feedback,
+            rating: r.rating,
+            reviewer: {
+                name: r.reviewerName || r.reviewer?.name,
+                role: r.reviewerRole || r.reviewer?.designation
+            },
+            date: r.createdAt
+        }));
+
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 5. Performance Report Summary
+exports.getPerformanceReportSummary = async (req, res) => {
+    try {
+        const stats = await Performance.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    avgScore: { $avg: "$overallScore" },
+                    totalReports: { $count: {} }
+                }
+            }
+        ]);
+
+        const data = stats.length > 0 ? {
+            avgScore: stats[0].avgScore.toFixed(1),
+            totalReports: stats[0].totalReports
+        } : { avgScore: 0, totalReports: 0 };
+
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 6. Performance Monthly Trends (Dataset for charts)
+exports.getPerformanceTrends = async (req, res) => {
+    try {
+        const trends = await Performance.aggregate([
+            {
+                $group: {
+                    _id: { month: "$month", year: "$year" },
+                    avgScore: { $avg: "$overallScore" }
+                }
+            },
+            { $sort: { "_id.year": 1, "_id.month": 1 } },
+            { $limit: 12 } // Last 12 months
+        ]);
+
+        const data = trends.map(t => ({
+            month: t._id.month,
+            avgScore: t.avgScore.toFixed(1)
+        }));
+
+        res.status(200).json({ success: true, data });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 7. Generate Performance Report (PDF/Excel)
+exports.generatePerformanceReport = async (req, res) => {
+    try {
+        const { type, month, year, department } = req.body; // type: 'PDF' | 'EXCEL'
+        
+        // Fetch data based on filters
+        let query = {};
+        if (month) query.month = month;
+        if (year) query.year = year;
+
+        const data = await Performance.find(query).populate("userId", "name department employeeId");
+
+        // Logic placeholder for generation
+        // ... (use libraries like exceljs or pdfkit)
+
+        res.status(200).json({ 
+            success: true, 
+            message: `${type} Report for ${month || 'all time'} ready for download`,
+            downloadUrl: `http://api.hrms.com/reports/performance_${Date.now()}.${type.toLowerCase()}`
+        });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -667,28 +1272,58 @@ exports.addFeedback = async (req, res) => {
 };
 
 // ---> HR Operations: Finance <---
-exports.getPayroll = async (req, res) => {
+
+// 1. Get Salary Processing List (Show all employees for the month)
+exports.getSalaryProcessingList = async (req, res) => {
     try {
-        const payrolls = await Payroll.find().populate("userId", "name department designation");
+        const { month, year } = req.query; // e.g. "October", 2023
+        
+        // Find existing payrolls for the criteria
+        let payrolls = await Payroll.find({ month, year })
+            .populate("userId", "name department designation profileImage");
+
+        if (payrolls.length === 0) {
+            // If No records for this month yet, suggest creating them from User's base salaries
+            const users = await User.find({ isTerminated: { $ne: true } }).select("name department designation profileImage financialDetails");
+            
+            payrolls = users.map(user => ({
+                userId: user,
+                month,
+                year,
+                basicSalary: user.financialDetails?.currentBaseSalary || 0,
+                bonus: 0,
+                deductions: 0,
+                netPay: user.financialDetails?.currentBaseSalary || 0,
+                status: "Pending"
+            }));
+        }
+
         res.status(200).json({ success: true, data: payrolls });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
+// 2. Create/Update a salary record (Manual adjustment)
 exports.processSalary = async (req, res) => {
     try {
-        // Example process script for someone 
-        const { userId, month, year, basicSalary, allowances, deductions } = req.body;
-        const netPay = (basicSalary + (allowances || 0)) - (deductions || 0);
-        const payroll = new Payroll({ userId, month, year, basicSalary, allowances, deductions, netPay, status: "Processed" });
-        await payroll.save();
-        res.status(201).json({ success: true, message: "Salary processed", data: payroll });
+        const { userId, month, year, basicSalary, bonus, deductions, status = "Processed" } = req.body;
+        
+        const netPay = (Number(basicSalary) + Number(bonus || 0)) - Number(deductions || 0);
+
+        const payroll = await Payroll.findOneAndUpdate(
+            { userId, month, year },
+            { basicSalary, bonus, deductions, netPay, status },
+            { upsert: true, new: true }
+        );
+
+        res.status(201).json({ success: true, message: "Salary record saved", data: payroll });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
+// 3. Get Payslip
 exports.getPayslip = async (req, res) => {
     try {
         const { id } = req.params; // payroll ID

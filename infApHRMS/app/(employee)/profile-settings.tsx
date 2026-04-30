@@ -1,18 +1,18 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
 import { useUser } from '../../context/UserContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
+import { resolveImageSource } from '@/utils/image';
 
 export default function ProfileSettingsPage() {
   const { user, updateSettings } = useUser();
 
   const renderSectionHeader = (icon: any, title: string) => (
     <View style={styles.sectionHeader}>
-      <Ionicons name={icon} size={20} color="#4f46e5" />
+      <Ionicons name={icon} size={20} color="#007AFF" />
       <Text style={styles.sectionHeaderText}>{title}</Text>
     </View>
   );
@@ -31,7 +31,7 @@ export default function ProfileSettingsPage() {
         <Switch 
           value={switchValue} 
           onValueChange={onSwitchChange}
-          trackColor={{ false: '#e2e8f0', true: '#4f46e5' }}
+          trackColor={{ false: '#e2e8f0', true: '#007AFF' }}
           thumbColor="#fff"
         />
       ) : hasArrow ? (
@@ -54,7 +54,7 @@ export default function ProfileSettingsPage() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Profile Summary Card (Mini) */}
         <View style={styles.profileSummaryRow}>
-          <Image source={user.avatar} style={styles.miniAvatar} />
+          <Image source={resolveImageSource(user.avatar)} style={styles.miniAvatar} />
           <View style={styles.miniMeta}>
              <Text style={styles.miniName}>{user.name}</Text>
              <Text style={styles.miniRole}>{user.role}</Text>
@@ -76,7 +76,7 @@ export default function ProfileSettingsPage() {
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabelText}>Email</Text>
-            <Text style={styles.infoValueText}>{user.email}</Text>
+            <Text style={styles.infoValueText} numberOfLines={1}>{user.email}</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabelText}>Department</Text>
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   miniName: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
     color: '#0f172a',
   },
@@ -166,13 +166,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   editBtn: {
-    backgroundColor: '#4f46e522',
+    backgroundColor: '#007AFF22',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
   },
   editBtnText: {
-    color: '#4f46e5',
+    color: '#007AFF',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -207,6 +207,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1e293b',
     fontWeight: '700',
+    flex: 1,
+    textAlign: 'right',
+    marginLeft: 16,
   },
   itemRow: {
     flexDirection: 'row',

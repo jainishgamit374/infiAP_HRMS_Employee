@@ -6,6 +6,7 @@ const payrollSchema = new mongoose.Schema({
     year: { type: Number, required: true },
     basicSalary: { type: Number, required: true },
     allowances: { type: Number, default: 0 },
+    bonus: { type: Number, default: 0 },
     deductions: { type: Number, default: 0 },
     netPay: { type: Number, required: true },
     status: { type: String, enum: ["Pending", "Processed", "Paid"], default: "Pending" },

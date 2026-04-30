@@ -1,7 +1,7 @@
 const User = require("../models/user.model");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { sendVerificationEmail } = require("../services/email.service");
+const { sendVerificationEmail, sendLoginOTPEmail } = require("../services/email.service");
 
 // Generate tokens
 const generateAccessAndRefreshTokens = async (userId) => {
@@ -17,6 +17,44 @@ const generateAccessAndRefreshTokens = async (userId) => {
     } catch (error) {
         throw new Error("Something went wrong while generating tokens");
     }
+};
+
+const sanitizeUser = (user) => ({
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    department: user.department || "",
+    designation: user.designation || "",
+    joiningDate: user.joiningDate,
+    phone: user.phone || "",
+    address: user.address || "",
+    employeeId: user.employeeId || "",
+    profileImage: user.profileImage || "",
+});
+
+const buildAuthResponse = (loggedInUser, accessToken) => ({
+    message: "Login successful",
+    require2FA: false,
+    token: accessToken,
+    role: loggedInUser.role,
+    user: sanitizeUser(loggedInUser),
+});
+
+const issueLoginOtpChallenge = async (user) => {
+    const otp = crypto.randomInt(100000, 999999).toString();
+    user.twoFactorOTP = otp;
+    user.twoFactorOTPExpires = Date.now() + 10 * 60 * 1000;
+    await user.save({ validateBeforeSave: false });
+
+    let emailSent = false;
+    try {
+        emailSent = await sendLoginOTPEmail(user.email, otp);
+    } catch (mailError) {
+        console.warn("OTP email send failed:", mailError.message);
+    }
+
+    return { emailSent };
 };
 
 // Register User
@@ -45,8 +83,17 @@ const registerUser = async (req, res) => {
             isEmailVerified: false,
         });
 
-        // Send Verification Email
-        await sendVerificationEmail(email, verificationToken);
+        let emailMessage = "User registered successfully.";
+
+        try {
+            const emailSent = await sendVerificationEmail(email, verificationToken);
+            emailMessage = emailSent
+                ? "User registered successfully. Please check your email for verification."
+                : "User registered successfully. Email verification is skipped in local development.";
+        } catch (mailError) {
+            console.warn("Verification email skipped:", mailError.message);
+            emailMessage = "User registered successfully. Verification email could not be sent from this environment.";
+        }
 
         const createdUser = await User.findById(user._id).select("-password -refreshToken");
 
@@ -55,8 +102,8 @@ const registerUser = async (req, res) => {
         }
 
         return res.status(201).json({
-            user: createdUser,
-            message: "User registered successfully. Please check your email for verification.",
+            user: sanitizeUser(createdUser),
+            message: emailMessage,
         });
     } catch (error) {
         console.error("Register Error:", error);
@@ -85,23 +132,66 @@ const loginUser = async (req, res) => {
             return res.status(401).json({ message: "Invalid user credentials" });
         }
 
-        // Generate a 6-digit OTP
-        const otp = crypto.randomInt(100000, 999999).toString();
-        user.twoFactorOTP = otp;
-        user.twoFactorOTPExpires = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
-        await user.save({ validateBeforeSave: false });
+        if (user.firstLogin2FAVerified) {
+            const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
+            const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
 
-        // Typically, you would send the OTP via email or SMS here
-        // await sendVerificationEmail(user.email, `Your 2FA OTP is: ${otp}`);
+            const options = {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+            };
+
+            return res
+                .status(200)
+                .cookie("accessToken", accessToken, options)
+                .cookie("refreshToken", refreshToken, options)
+                .json(buildAuthResponse(loggedInUser, accessToken));
+        }
+
+        const { emailSent } = await issueLoginOtpChallenge(user);
 
         return res.status(200).json({
-            message: "OTP sent to your email for 2FA verification",
+            message: emailSent
+                ? "Verification code sent to your email."
+                : "Unable to send verification code email. Please check mail configuration.",
             require2FA: true,
-            userId: user._id
+            userId: user._id,
         });
     } catch (error) {
         console.error("Login Error:", error);
         res.status(500).json({ message: "Server error during login" });
+    }
+};
+
+const resendLoginOTP = async (req, res) => {
+    try {
+        const { userId, email } = req.body;
+
+        if (!userId && !email) {
+            return res.status(400).json({ message: "User ID or email is required" });
+        }
+
+        const user = await User.findOne(userId ? { _id: userId } : { email });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        if (user.firstLogin2FAVerified) {
+            return res.status(400).json({ message: "Security code is required only for first login." });
+        }
+
+        const { emailSent } = await issueLoginOtpChallenge(user);
+
+        return res.status(200).json({
+            message: emailSent
+                ? "A new verification code has been sent to your email."
+                : "Unable to send a new verification code email. Please check mail configuration.",
+            userId: user._id,
+        });
+    } catch (error) {
+        console.error("Resend OTP Error:", error);
+        return res.status(500).json({ message: "Server error while resending the verification code" });
     }
 };
 
@@ -132,6 +222,7 @@ const verifyLoginOTP = async (req, res) => {
         // Clear the OTP fields
         user.twoFactorOTP = undefined;
         user.twoFactorOTPExpires = undefined;
+        user.firstLogin2FAVerified = true;
         await user.save({ validateBeforeSave: false });
 
         const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id);
@@ -150,7 +241,7 @@ const verifyLoginOTP = async (req, res) => {
                 message: "2FA verified successfully",
                 token: accessToken,
                 role: loggedInUser.role,
-                user: loggedInUser
+                user: sanitizeUser(loggedInUser)
             });
     } catch (error) {
         console.error("Verify OTP Error:", error);
@@ -215,6 +306,7 @@ const resetPassword = async (req, res) => {
 module.exports = {
     registerUser,
     loginUser,
+    resendLoginOTP,
     verifyLoginOTP,
     forgotPassword,
     resetPassword

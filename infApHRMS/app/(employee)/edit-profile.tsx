@@ -1,65 +1,113 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, TextInput, KeyboardAvoidingView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Platform,
+  Image,
+  TextInput,
+  KeyboardAvoidingView,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useUser } from '../../context/UserContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 import { useImagePicker } from '@/hooks/useImagePicker';
+import { resolveImageSource } from '@/utils/image';
+import { updateEmployeeProfile } from '@/services/auth';
+import { UI } from '@/constants/ui';
 
 export default function EditProfilePage() {
-  const { user, updateUser } = useUser();
+  const { user, syncUserFromApi } = useUser();
   const [name, setName] = useState(user.name);
-  const [role, setRole] = useState(user.role);
-  const [email, setEmail] = useState(user.email);
+  const [designation, setDesignation] = useState(user.role);
   const [department, setDepartment] = useState(user.department);
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [phone, setPhone] = useState(user.phone || '');
+  const [address, setAddress] = useState(user.address || '');
+  const [avatarUri, setAvatarUri] = useState<string | null>(
+    typeof user.avatar === 'string' ? user.avatar : null
+  );
+  const [profileImagePayload, setProfileImagePayload] = useState<string | undefined>(
+    typeof user.avatar === 'string' ? user.avatar : undefined
+  );
+  const [isSaving, setIsSaving] = useState(false);
 
   const { showImagePickerOptions } = useImagePicker();
 
   const handlePickImage = () => {
-    showImagePickerOptions((uri) => {
-      setAvatarUri(uri);
+    showImagePickerOptions((image) => {
+      setAvatarUri(image.uri);
+      setProfileImagePayload(image.uploadValue);
     });
   };
 
-  const handleSave = () => {
-    updateUser({ 
-      name, 
-      role, 
-      email, 
-      department,
-      avatar: avatarUri || user.avatar 
-    });
-    router.back();
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Missing Info', 'Please enter your full name.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const response = await updateEmployeeProfile({
+        name: name.trim(),
+        phone: phone.trim(),
+        address: address.trim(),
+        department: department.trim(),
+        designation: designation.trim(),
+        profileImage: profileImagePayload,
+      });
+
+      syncUserFromApi({
+        _id: response.data.id,
+        ...response.data,
+        role: response.data.systemRole as any,
+        designation: response.data.role,
+        profileImage: response.data.avatar,
+      });
+
+      Alert.alert('Profile Updated', 'Your profile changes have been saved.');
+      router.back();
+    } catch (error) {
+      Alert.alert('Save Failed', error instanceof Error ? error.message : 'Unable to save your profile right now.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <View style={styles.root}>
-      {/* Unified Header */}
-      <Header 
-        title="Edit Profile" 
-        showBack={true} 
-      />
+      <Header title="Edit Profile" showBack={true} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        style={styles.flex}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          {/* Profile Photo Section */}
-          <View style={styles.photoSection}>
-            <View style={styles.avatarContainer}>
-              <Image source={avatarUri ? { uri: avatarUri } : user.avatar} style={styles.avatar} />
-              <TouchableOpacity style={styles.cameraBtn} onPress={handlePickImage}>
-                <Ionicons name="camera" size={20} color="#fff" />
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.heroCard}>
+            <View style={styles.avatarWrap}>
+              <Image
+                source={resolveImageSource(avatarUri || user.avatar)}
+                style={styles.avatar}
+              />
+              <TouchableOpacity style={styles.cameraBtn} onPress={handlePickImage} activeOpacity={0.85}>
+                <Ionicons name="camera" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
+            <Text style={styles.heroTitle}>Keep your details current</Text>
+            <Text style={styles.heroSubtitle}>Update your phone, address, role details, and profile picture.</Text>
           </View>
 
-          {/* Form Section */}
-          <View style={styles.form}>
+          <View style={styles.formCard}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Full Name</Text>
               <View style={styles.inputWrapper}>
@@ -68,54 +116,98 @@ export default function EditProfilePage() {
                   value={name}
                   onChangeText={setName}
                   placeholder="Enter full name"
+                  placeholderTextColor="#94a3b8"
                 />
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Role</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  value={role}
-                  onChangeText={setRole}
-                  placeholder="Enter job role"
-                />
+            <View style={styles.twoColumnRow}>
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Mobile Number</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={phone}
+                    onChangeText={setPhone}
+                    placeholder="Enter mobile number"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="phone-pad"
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Email</Text>
+                <View style={[styles.inputWrapper, styles.readOnlyInputWrapper]}>
+                  <Text style={styles.readOnlyText} numberOfLines={1}>
+                    {user.email}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.twoColumnRow}>
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Department</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={department}
+                    onChangeText={setDepartment}
+                    placeholder="Enter department"
+                    placeholderTextColor="#94a3b8"
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Designation</Text>
+                <View style={styles.inputWrapper}>
+                  <TextInput
+                    style={styles.input}
+                    value={designation}
+                    onChangeText={setDesignation}
+                    placeholder="Enter designation"
+                    placeholderTextColor="#94a3b8"
+                  />
+                </View>
               </View>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <View style={styles.inputWrapper}>
+              <Text style={styles.label}>Address</Text>
+              <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
                 <TextInput
-                  style={styles.input}
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="Enter email address"
-                  keyboardType="email-address"
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Department</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  value={department}
-                  onChangeText={setDepartment}
-                  placeholder="Enter department"
+                  style={[styles.input, styles.textArea]}
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="Enter your address"
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  textAlignVertical="top"
                 />
               </View>
             </View>
           </View>
 
-          {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>Save Changes</Text>
+            <TouchableOpacity
+              style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+              onPress={handleSave}
+              disabled={isSaving}
+              activeOpacity={0.85}
+            >
+              {isSaving ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.saveBtnText}>Save Changes</Text>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                </>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()}>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()} activeOpacity={0.8}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -126,100 +218,151 @@ export default function EditProfilePage() {
 }
 
 const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
   root: {
     flex: 1,
-    backgroundColor: '#fff',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0f172a',
+    // backgroundColor: '#007AFF',
+    backgroundColor: UI.colors.background,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingHorizontal: 14,
+    paddingTop: 20,
+    paddingBottom: 44,
   },
-  photoSection: {
+  heroCard: {
+    backgroundColor: '#007AFF',
+    borderRadius: 16,
+    padding: 14,
     alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
   },
-  avatarContainer: {
+  avatarWrap: {
     position: 'relative',
+    marginBottom: 10,
   },
   avatar: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#f1f5f9',
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 2,
+    borderColor: '#D9E8FF',
+    backgroundColor: '#e2e8f0',
   },
   cameraBtn: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#4f46e5',
+    right: -2,
+    bottom: -2,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: UI.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: '#fff',
+    borderWidth: 2,
+    borderColor: UI.colors.surface,
   },
-  form: {
-    paddingHorizontal: 24,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
+  heroTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1e293b',
-    marginBottom: 8,
+    color: '#fff',
+    marginBottom: 3,
+  },
+  heroSubtitle: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  formCard: {
+    backgroundColor: UI.colors.surface,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
+  },
+  twoColumnRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  halfWidth: {
+    flex: 1,
+  },
+  inputGroup: {
+    marginBottom: 12,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#98A2B3',
+    marginBottom: 5,
+    textTransform: 'uppercase',
   },
   inputWrapper: {
-    backgroundColor: '#f8fafc',
+    minHeight: 42,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 50,
+    borderColor: UI.colors.border,
+    backgroundColor: UI.colors.surfaceAlt,
     justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  readOnlyInputWrapper: {
+    backgroundColor: '#f1f5f9',
   },
   input: {
-    fontSize: 16,
-    color: '#1e293b',
+    fontSize: 13,
     fontWeight: '500',
+    color: UI.colors.text,
+  },
+  readOnlyText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#475569',
+  },
+  textAreaWrapper: {
+    minHeight: 88,
+    paddingVertical: 10,
+  },
+  textArea: {
+    minHeight: 56,
   },
   actions: {
-    paddingHorizontal: 24,
-    marginTop: 24,
-    gap: 12,
+    gap: 10,
+    marginTop: 12,
   },
   saveBtn: {
-    backgroundColor: '#4f46e5',
-    height: 50,
+    minHeight: 46,
     borderRadius: 12,
+    backgroundColor: UI.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  saveBtnDisabled: {
+    opacity: 0.75,
   },
   saveBtnText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
   cancelBtn: {
-    backgroundColor: '#fff',
-    height: 50,
+    minHeight: 44,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
   },
   cancelBtnText: {
-    color: '#64748b',
-    fontSize: 16,
-    fontWeight: '700',
+    color: '#475569',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

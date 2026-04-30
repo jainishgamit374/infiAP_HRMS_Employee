@@ -1,6 +1,11 @@
 import * as ImagePicker from 'expo-image-picker';
 import { Alert, Platform } from 'react-native';
 
+export type PickedImage = {
+  uri: string;
+  uploadValue: string;
+};
+
 export const useImagePicker = () => {
   const requestPermissions = async () => {
     if (Platform.OS !== 'web') {
@@ -19,6 +24,18 @@ export const useImagePicker = () => {
     return true;
   };
 
+  const toPickedImage = (asset: ImagePicker.ImagePickerAsset): PickedImage => {
+    const mimeType = asset.mimeType || 'image/jpeg';
+    const uploadValue = asset.base64
+      ? `data:${mimeType};base64,${asset.base64}`
+      : asset.uri;
+
+    return {
+      uri: asset.uri,
+      uploadValue,
+    };
+  };
+
   const pickImage = async () => {
     const hasPermission = await requestPermissions();
     if (!hasPermission) return null;
@@ -27,11 +44,12 @@ export const useImagePicker = () => {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.5,
+      base64: true,
     });
 
     if (!result.canceled) {
-      return result.assets[0].uri;
+      return toPickedImage(result.assets[0]);
     }
     return null;
   };
@@ -44,16 +62,17 @@ export const useImagePicker = () => {
       mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
+      quality: 0.5,
+      base64: true,
     });
 
     if (!result.canceled) {
-      return result.assets[0].uri;
+      return toPickedImage(result.assets[0]);
     }
     return null;
   };
 
-  const showImagePickerOptions = async (onImagePicked: (uri: string) => void) => {
+  const showImagePickerOptions = async (onImagePicked: (image: PickedImage) => void) => {
     Alert.alert(
       'Select Photo',
       'Choose an option to upload your profile photo',
@@ -61,15 +80,15 @@ export const useImagePicker = () => {
         {
           text: 'Camera',
           onPress: async () => {
-            const uri = await takePhoto();
-            if (uri) onImagePicked(uri);
+            const image = await takePhoto();
+            if (image) onImagePicked(image);
           },
         },
         {
           text: 'Gallery',
           onPress: async () => {
-            const uri = await pickImage();
-            if (uri) onImagePicked(uri);
+            const image = await pickImage();
+            if (image) onImagePicked(image);
           },
         },
         {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Platform, Modal, TextInput, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -13,29 +13,7 @@ import Animated, {
 
 const { width } = Dimensions.get('window');
 
-const MOCK_WFH = [
-  {
-    id: '1',
-    date: 'Mar 25, 2026',
-    day: 'Wednesday',
-    duration: 'Full Day',
-    status: 'Approved',
-  },
-  {
-    id: '2',
-    date: 'Mar 26, 2026',
-    day: 'Thursday',
-    duration: 'Half Day (PM)',
-    status: 'Pending',
-  },
-  {
-    id: '3',
-    date: 'Apr 02, 2026',
-    day: 'Thursday',
-    duration: 'Full Day',
-    status: 'Approved',
-  },
-];
+const MOCK_WFH: any[] = [];  // Empty initial data - will be fetched from API
 
 const WFHCard = ({ item, index }: { item: any, index: number }) => {
   const status = item.status || 'Pending';
@@ -128,7 +106,9 @@ export default function UpcomingWFH() {
 
   const handleSubmit = () => {
     if (!selectedDate) return;
+    const body = { date: selectedDate, duration, reason };
 
+    // optimistic UI update
     const newRequest = {
       id: Math.random().toString(36).substr(2, 9),
       date: selectedDate,
@@ -136,17 +116,55 @@ export default function UpcomingWFH() {
       duration: duration,
       status: 'Pending',
     };
-
     setWfhList([newRequest, ...wfhList]);
     setModalVisible(false);
     resetForm();
-    
-    // Show success popup
-    setTimeout(() => {
+
+    fetch(`${require('../../constants/api').ADMIN_API_URL}/wfh/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(() => {
       setSuccessVisible(true);
       setTimeout(() => setSuccessVisible(false), 2000);
-    }, 500);
+    }).catch(() => {
+      // on error, keep optimistic entry but you may want to refresh from server
+    });
   };
+
+  useEffect(() => {
+    // Load WFH data from backend
+    const loadWfhData = async () => {
+      try {
+        const api = require('../../constants/api').API_BASE_URL;
+        const response = await fetch(`${api}/getemployeewfh`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const json = await response.json();
+          if (json && json.data && Array.isArray(json.data)) {
+            const mapped = json.data.map((d: any) => ({
+              id: d.id || Math.random().toString(36).substr(2, 9),
+              date: new Date(d.date || d.Date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+              day: getDayOfWeek(d.date || d.Date),
+              duration: d.duration || d.Duration || 'Full Day',
+              status: d.status || d.Status || 'Pending'
+            }));
+            setWfhList(mapped);
+          }
+        }
+      } catch (error) {
+        console.log('Error fetching WFH data:', error);
+        // Keep empty list if API fails
+      }
+    };
+    
+    loadWfhData();
+  }, []);
 
   return (
     <View style={styles.container}>

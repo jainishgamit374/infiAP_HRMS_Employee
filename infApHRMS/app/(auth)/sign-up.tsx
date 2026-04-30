@@ -10,11 +10,12 @@ import {
   ScrollView,
   Modal,
   Alert,
-  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { signUpUser } from '../../services/auth';
 
 export default function SignUp() {
   const [fullName, setFullName] = useState('');
@@ -25,13 +26,18 @@ export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCreateAccount = () => {
-    if (!fullName.trim()) {
+  const handleCreateAccount = async () => {
+    const normalizedName = fullName.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedName) {
       Alert.alert('Missing Info', 'Please enter your full name.');
       return;
     }
-    if (!email.trim()) {
+    if (!normalizedEmail) {
       Alert.alert('Missing Info', 'Please enter your email address.');
       return;
     }
@@ -47,7 +53,23 @@ export default function SignUp() {
       Alert.alert('Terms Required', 'Please agree to the Terms of Service and Privacy Policy.');
       return;
     }
-    setShowSuccessModal(true);
+
+    try {
+      setIsSubmitting(true);
+      const response = await signUpUser({
+        name: normalizedName,
+        email: normalizedEmail,
+        password,
+        role: 'employee',
+      });
+
+      setSuccessMessage(response.message);
+      setShowSuccessModal(true);
+    } catch (error) {
+      Alert.alert('Sign Up Failed', error instanceof Error ? error.message : 'Unable to create your account right now.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleGoToSignIn = () => {
@@ -134,6 +156,9 @@ export default function SignUp() {
                   onChangeText={setConfirmPassword}
                   secureTextEntry={!showConfirmPassword}
                 />
+                <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                  <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9ca3af" />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -147,7 +172,7 @@ export default function SignUp() {
                  <Ionicons
                   name={agreeToTerms ? "checkbox" : "square-outline"}
                   size={20}
-                  color={agreeToTerms ? "#5a55d2" : "#9ca3af"}
+                  color={agreeToTerms ? "#007AFF" : "#9ca3af"}
                 />
               </View>
               <Text style={styles.termsText}>
@@ -156,8 +181,17 @@ export default function SignUp() {
             </TouchableOpacity>
 
             {/* Create Account Button */}
-            <TouchableOpacity style={styles.createButton} onPress={handleCreateAccount} activeOpacity={0.8}>
-              <Text style={styles.createText}>Create Account</Text>
+            <TouchableOpacity
+              style={[styles.createButton, isSubmitting && styles.createButtonDisabled]}
+              onPress={handleCreateAccount}
+              activeOpacity={0.8}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.createText}>Create Account</Text>
+              )}
             </TouchableOpacity>
 
             {/* Sign In Link */}
@@ -176,11 +210,11 @@ export default function SignUp() {
           {/* Footer */}
           <View style={styles.footerContainer}>
             <Text style={styles.footerText}>© 2024 InfiAP Platforms Inc. All rights reserved.</Text>
-            <div style={styles.footerLinksRow}>
+            <View style={styles.footerLinksRow}>
               <Text style={styles.footerLinkItem}>Security</Text>
               <Text style={styles.footerLinkItem}>Contact Support</Text>
               <Text style={styles.footerLinkItem}>API Docs</Text>
-            </div>
+            </View>
           </View>
         </ScrollView>
 
@@ -193,8 +227,7 @@ export default function SignUp() {
               </View>
               <Text style={styles.modalTitle}>Account Created!</Text>
               <Text style={styles.modalSubtitle}>
-                Welcome to InfiAP, {fullName.split(' ')[0]}! Your account has been successfully created.
-                Please sign in to continue.
+                {successMessage || `Welcome to InfiAP, ${fullName.split(' ')[0]}! Your account has been successfully created. Please sign in to continue.`}
               </Text>
               <TouchableOpacity style={styles.modalButton} onPress={handleGoToSignIn} activeOpacity={0.8}>
                 <Text style={styles.modalButtonText}>Go to Sign In</Text>
@@ -215,7 +248,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   title: {
-    fontSize: 28,
+    fontSize: 15,
     fontWeight: '800',
     color: '#111827',
     marginBottom: 28,
@@ -278,21 +311,24 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   linkText: {
-    color: '#5a55d2',
+    color: '#007AFF',
     fontWeight: '500',
   },
   createButton: {
-    backgroundColor: '#5a55d2',
+    backgroundColor: '#007AFF',
     borderRadius: 10,
     height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#5a55d2',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
     marginBottom: 24,
+  },
+  createButtonDisabled: {
+    opacity: 0.75,
   },
   createText: {
     color: '#ffffff',
@@ -312,7 +348,7 @@ const styles = StyleSheet.create({
   signInLink: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#5a55d2',
+    color: '#007AFF',
   },
   footerContainer: {
     alignItems: 'center',
@@ -354,7 +390,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 12,
@@ -367,14 +403,14 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   modalButton: {
-    backgroundColor: '#5a55d2',
+    backgroundColor: '#007AFF',
     borderRadius: 12,
     height: 52,
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#5a55d2',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,

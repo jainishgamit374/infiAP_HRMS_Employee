@@ -1,14 +1,41 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
+import { fetchAttendanceHistory, type AttendanceRecord } from '../../services/auth';
 
 export default function AttendanceHistory() {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({ presentDays: 0, lateDays: 0, absentDays: 0, totalHours: 0 });
 
+  useEffect(() => {
+    const loadAttendance = async () => {
+      setLoading(true);
+      try {
+        const response = await fetchAttendanceHistory(
+          String(currentDate.getMonth() + 1),
+          String(currentDate.getFullYear())
+        );
+
+        setAttendanceRecords(response.data.records || []);
+        setStats(response.data.summary || { presentDays: 0, lateDays: 0, absentDays: 0, totalHours: 0 });
+      } catch {
+        setAttendanceRecords([]);
+        setStats({ presentDays: 0, lateDays: 0, absentDays: 0, totalHours: 0 });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAttendance();
+  }, [currentDate]);
+
+  // Update calendar status based on attendance records
   const calendarData = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -16,6 +43,12 @@ export default function AttendanceHistory() {
     const firstDayOfMonth = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    // Create map of attendance records by day
+    const recordsByDay = new Map<number, AttendanceRecord>();
+    attendanceRecords.forEach(record => {
+      recordsByDay.set(record.day, record);
+    });
 
     const days = [];
 
@@ -30,9 +63,19 @@ export default function AttendanceHistory() {
 
     // Current month
     for (let i = 1; i <= daysInMonth; i++) {
-      let status = 'present';
-      if (i % 7 === 0 || i % 7 === 6) status = 'off';
-      if (i === 6 || i === 20) status = 'missed';
+      const record = recordsByDay.get(i);
+      let status = 'off';
+      
+      if (record) {
+        if (record.status === 'Present' || record.status === 'Late') {
+          status = 'present';
+        } else if (record.status === 'Absent') {
+          status = 'missed';
+        } else if (record.status === 'Pending') {
+          status = 'pending';
+        }
+      }
+
       if (i === new Date().getDate() && month === new Date().getMonth() && year === new Date().getFullYear()) {
         status = 'selected';
       }
@@ -44,18 +87,8 @@ export default function AttendanceHistory() {
       });
     }
 
-    // Next month padding to fill 6 weeks (42 cells)
-    const remainingSlots = 42 - days.length;
-    for (let i = 1; i <= remainingSlots; i++) {
-        days.push({
-          day: i,
-          month: 'next',
-          status: 'off'
-        });
-    }
-
     return days;
-  }, [currentDate]);
+  }, [currentDate, attendanceRecords]);
 
   const monthName = currentDate.toLocaleString('default', { month: 'long' });
   const year = currentDate.getFullYear();
@@ -79,18 +112,18 @@ export default function AttendanceHistory() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>TOTAL HOURS</Text>
-            <Text style={styles.statValue}>164h 30m</Text>
+            <Text style={styles.statValue}>{stats.totalHours}h</Text>
             <View style={styles.growthBadge}>
               <Ionicons name="trending-up" size={12} color="#22c55e" />
-              <Text style={styles.growthText}>+4.2%</Text>
+              <Text style={styles.growthText}>On track</Text>
             </View>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>PRESENT DAYS</Text>
-            <Text style={styles.statValue}>18/22</Text>
+            <Text style={styles.statValue}>{stats.presentDays}</Text>
             <View style={styles.statusBadge}>
               <Ionicons name="checkmark-circle-outline" size={12} color="#22c55e" />
-              <Text style={styles.statusBadgeText}>On track</Text>
+              <Text style={styles.statusBadgeText}>{stats.absentDays === 0 ? 'Perfect' : 'Good'}</Text>
             </View>
           </View>
         </View>
@@ -169,77 +202,68 @@ export default function AttendanceHistory() {
 
         {/* Log Cards */}
         <View style={styles.logList}>
-           <View style={styles.logCard}>
-             <View style={styles.logDateColumn}>
-               <Text style={styles.logMonth}>OCT</Text>
-               <Text style={styles.logDay}>12</Text>
-             </View>
-             <View style={styles.logInfo}>
-               <View style={styles.punchRow}>
-                 <Ionicons name="log-in-outline" size={16} color="#22c55e" />
-                 <Text style={styles.punchTime}>09:05 AM</Text>
-               </View>
-               <View style={styles.punchRow}>
-                 <Ionicons name="log-out-outline" size={16} color="#ef4444" />
-                 <Text style={styles.punchTime}>06:12 PM</Text>
-               </View>
-             </View>
-             <View style={styles.logRight}>
-               <Text style={styles.durationText}>9h 07m</Text>
-               <View style={styles.presentBadge}>
-                 <Text style={styles.presentText}>PRESENT</Text>
-               </View>
-             </View>
-           </View>
-
-           <View style={[styles.logCard, { borderColor: '#fee2e2' }]}>
-             <View style={styles.logDateColumn}>
-               <Text style={styles.logMonth}>OCT</Text>
-               <Text style={styles.logDay}>06</Text>
-             </View>
-             <View style={styles.logInfo}>
-               <View style={styles.punchRow}>
-                 <Ionicons name="log-in-outline" size={16} color="#cbd5e1" />
-                 <Text style={styles.punchTime}>-- : --</Text>
-               </View>
-               <View style={styles.punchRow}>
-                 <Ionicons name="log-out-outline" size={16} color="#cbd5e1" />
-                 <Text style={styles.punchTime}>-- : --</Text>
-               </View>
-             </View>
-             <View style={styles.logRight}>
-               <TouchableOpacity style={styles.regularizeBtn}>
-                 <Ionicons name="calendar-outline" size={14} color="#fff" />
-                 <Text style={styles.regularizeBtnText}>Regularize</Text>
-               </TouchableOpacity>
-               <View style={styles.missedBadge}>
-                 <Text style={styles.missedText}>MISSED PUNCH</Text>
-               </View>
-             </View>
-           </View>
-
-           <View style={styles.logCard}>
-             <View style={styles.logDateColumn}>
-               <Text style={styles.logMonth}>OCT</Text>
-               <Text style={styles.logDay}>05</Text>
-             </View>
-             <View style={styles.logInfo}>
-               <View style={styles.punchRow}>
-                 <Ionicons name="log-in-outline" size={16} color="#22c55e" />
-                 <Text style={styles.punchTime}>08:58 AM</Text>
-               </View>
-               <View style={styles.punchRow}>
-                 <Ionicons name="log-out-outline" size={16} color="#ef4444" />
-                 <Text style={styles.punchTime}>06:05 PM</Text>
-               </View>
-             </View>
-             <View style={styles.logRight}>
-               <Text style={styles.durationText}>9h 07m</Text>
-               <View style={styles.presentBadge}>
-                 <Text style={styles.presentText}>PRESENT</Text>
-               </View>
-             </View>
-           </View>
+          {loading ? (
+            <ActivityIndicator size="large" color="#4f46e5" style={{ marginVertical: 40 }} />
+          ) : attendanceRecords.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="calendar-outline" size={48} color="#cbd5e1" />
+              <Text style={styles.emptyStateText}>No attendance records</Text>
+              <Text style={styles.emptyStateSubText}>Check in to start logging your attendance</Text>
+            </View>
+          ) : (
+            attendanceRecords.map((record) => (
+              <View 
+                key={record.id} 
+                style={[
+                  styles.logCard, 
+                  record.status === 'Absent' && { borderColor: '#fee2e2' }
+                ]}
+              >
+                <View style={styles.logDateColumn}>
+                  <Text style={styles.logMonth}>{record.month}</Text>
+                  <Text style={styles.logDay}>{record.day}</Text>
+                </View>
+                <View style={styles.logInfo}>
+                  <View style={styles.punchRow}>
+                    <Ionicons 
+                      name="log-in-outline" 
+                      size={16} 
+                      color={record.checkInTime === '--:--' ? '#cbd5e1' : '#22c55e'} 
+                    />
+                    <Text style={styles.punchTime}>{record.checkInTime}</Text>
+                  </View>
+                  <View style={styles.punchRow}>
+                    <Ionicons 
+                      name="log-out-outline" 
+                      size={16} 
+                      color={record.checkOutTime === '--:--' ? '#cbd5e1' : '#ef4444'} 
+                    />
+                    <Text style={styles.punchTime}>{record.checkOutTime}</Text>
+                  </View>
+                </View>
+                <View style={styles.logRight}>
+                  <Text style={styles.durationText}>{record.duration}</Text>
+                  <View 
+                    style={[
+                      styles.presentBadge,
+                      record.status === 'Late' && styles.lateBadge,
+                      record.status === 'Absent' && styles.missedBadge
+                    ]}
+                  >
+                    <Text 
+                      style={[
+                        styles.presentText,
+                        record.status === 'Late' && styles.lateText,
+                        record.status === 'Absent' && styles.missedText
+                      ]}
+                    >
+                      {record.status}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         <View style={{ height: 100 }} />
@@ -496,6 +520,33 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     color: '#ef4444',
+  },
+  lateBadge: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  lateText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#d97706',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginTop: 16,
+  },
+  emptyStateSubText: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 8,
   },
   regularizeBtn: {
     backgroundColor: '#6366f1',

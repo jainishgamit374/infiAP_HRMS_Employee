@@ -1,6 +1,6 @@
 # HR Dashboard API Documentation
 
-**Base URL**: `/api/v1/hr`  
+**Base URL**: `https://www.infiap.com/api/v1/hr`  
 **Auth**: All routes require `Authorization: Bearer <token>` header.
 
 ---
@@ -21,6 +21,19 @@ Returns total employees, present count for today, and holiday info.
         "holidayDetails": null,
         "greeting": "Welcome to HR Dashboard"
     }
+}
+```
+
+---
+
+### `GET /profile` 🔒 HR/Admin only
+Returns the detailed administration profile of the currently logged-in HR/Admin.
+**Returns:**
+```json
+{
+  "header": { "profileImage": "...", "name": "...", "post": "...", "hrId": "..." },
+  "personalInfo": { "fullName": "...", "joiningDate": "...", "phoneNumber": "...", "emailId": "..." },
+  "administrativeAccess": { "accessLevel": "hr", "complianceStatus": "Compliant" }
 }
 ```
 
@@ -86,10 +99,15 @@ Full employee profile with attendance, performance & payroll.
       "role": "Frontend Developer",
       "manager": { "name": "John", "employeeId": "EMP001" },
       "joiningDate": "2023-01-15",
-      "employeeType": "full-time"
+      "employeeType": "full-time",
+      "status": "Active"
     },
     "performance": { "efficiencyScore": 85, "qualityScore": 90, "reliabilityScore": 88 },
-    "payrollAndSalary": { "currentSalary": 66667, "lastPayslip": { ... } }
+    "financial": { 
+        "currentBaseSalary": 6666, 
+        "annualSalaryUSD": 80000, 
+        "lastPayslip": { ... } 
+    }
   }
 }
 ```
@@ -147,8 +165,37 @@ Generate a detailed report for a date range (Export logic).
 
 ## 4. HR Operations — Leaves
 
+### `GET /leaves/stats`
+Returns counts for Pending, Approved, Rejected, and On Leave Today.
+
+---
+
+### `GET /leaves/applications`
+List leave applications with status filters.
+**Query Params:** `status` (Pending/Approved/Rejected), `page`, `limit`.
+
+---
+### `GET /leaves/today`
+List all employees who are on approved leave today.
+
+---
+
+### `GET /leaves/pending-detailed`
+List all pending leaves with full employee details and calculated duration.
+**Returns:** `employeeProfile`, `employeeName`, `leaveType`, `durationDays`, `startDate`, `endDate`, `appliedAt`.
+
+---
+
+### `GET /leaves/applications`
+List leave applications with status filters.
+**Query Params:** `status` (Pending/Approved/Rejected), `page`, `limit`.
+
+---
+
 ### `GET /leaves/requests`
 List all pending leave requests ("Awaiting Approve" status).
+
+---
 
 ### `PUT /leaves/approve` 🔒 HR/Admin/Manager only
 Approve or reject a leave request.
@@ -170,27 +217,131 @@ Leave history with optional filters.
 
 ---
 
+### `POST /leaves/generate-report` 🔒 HR/Admin only
+Generates structured data of past leave records (e.g. Approved/Rejected) so the client can export it as a PDF or Excel file.
+
+**Body:**
+```json
+{
+  "startDate": "2023-10-01",
+  "endDate": "2023-10-31",
+  "department": "Engineering",
+  "status": "Approved",
+  "format": "pdf" 
+}
+```
+> Returns a clean `reportData` array detailing `employeeName`, `leaveType`, `status`, and `reviewedBy` (e.g. Approved or Rejected). Client-side handles file conversion.
+
+---
+
 ## 5. HR Operations — Recruitment
 
 ### `GET /recruitment/dashboard`
-Summary: total candidates, hired count.
+Summary counts: `openJobs`, `totalCandidates`, `interviewCount` (Technical round), `filledRoles`.
 
-### `GET /recruitment/candidates`
-List all candidates.
+### `GET /recruitment/candidates/review`
+List only new applications (`status: Applied`).
+**Returns:** `applicantName`, `profileImage`, `appliedDate`, `jobTitle`, `jobId.department` (Team), `jobId.type` (Work mode).
 
-### `GET /recruitment/applications`
-List candidates with "Applied" status only.
+---
+
+### `GET /recruitment/candidates/tracking`
+List all candidates in the system for general tracking.
+**Query Params:** `status`, `page`, `limit`.
+
+---
+
+### `PUT /recruitment/candidates/:id/schedule-interview` 🔒 HR/Admin only
+Action to move candidate to "Technical Interview" stage and set date/interviewer.
+**Body:** `{ "date": "...", "interviewer": "..." }`
+
+---
+
+### `GET /recruitment/candidates/:id/profile`
+Detailed profile of a candidate.
+**Returns:** Profile, Contact, Portfolio, Summary, Experience list, Skills, Education, and `recruitmentProgress` (Stepper data).
+
+---
+
+### `PUT /recruitment/candidates/:id/shortlist` 🔒 HR/Admin only
+Action to shortlist a candidate.
+
+---
+
+### `PUT /recruitment/candidates/:id/reject` 🔒 HR/Admin only
+Action to reject a candidate.
+**Body:** `{ "reason": "..." }`
+
+---
+
+### `PUT /recruitment/candidates/:id/interview` 🔒 HR/Admin only
+Update technical interview stage.
+**Body:** `{ "date": "...", "interviewer": "...", "score": 85, "feedback": "...", "passed": true }`
+
+---
+
+### `PUT /recruitment/candidates/:id/select` 🔒 HR/Admin only
+Move candidate to "Selected" status.
+
+---
+
+### `POST /recruitment/candidates/:id/offer` 🔒 HR/Admin only
+Trigger offer letter generation/notification.
+
+---
+
+### `GET /recruitment/jobs`
+List all job postings.
+
+---
+
+### `POST /recruitment/jobs` 🔒 HR/Admin only
+Post a new job.
+**Body:** `{ "title": "...", "department": "...", "type": "Full-time", "status": "Open" }`
 
 ---
 
 ## 6. HR Operations — Performance
 
 ### `GET /performance/dashboard`
-All performance records with employee details.
+Monthly high-level metrics.
+**Query Params:** `month` (YYYY-MM), `year`.
+**Returns:** `averageScore`, `topPerformer` (Name, Dept, Score), `onTarget` count, `belowTarget` count.
+
+---
+
+### `GET /performance/feedback/stats`
+Summary for the Feedback section.
+**Returns:** `avgRating` (e.g. 4.2), `completedReviews` (total count).
+
+---
+
+### `GET /performance/feedback/recent`
+List of recent reviews for the activity feed.
+**Returns:** `profileImage`, `name`, `department`, `status` (Completed), `reviewName`, `jobRole`, `description` (feedback text), `rating`, `reviewer` (Name, Role).
+
+---
+
+### `GET /performance/report/summary`
+Report overview.
+**Returns:** `avgScore` (overall average score), `totalReports` (count of evaluations).
+
+---
+
+### `GET /performance/report/trends`
+Evaluation trends over time (dataset for charts).
+**Returns:** Array of `{ month: "2023-10", avgScore: 84.5 }`.
+
+---
+
+### `POST /performance/report/generate` 🔒 HR/Admin only
+Generate a detailed performance report.
+**Body:** `{ "type": "PDF" | "EXCEL", "month": "optional", "department": "optional" }`
+
+---
 
 ### `POST /performance/feedback` 🔒 HR/Admin/Manager only
-Add performance feedback/scores.
-
+Add performance feedback/scores. (Auto-calculates status and rating on save).
 **Body:**
 ```json
 {
@@ -200,20 +351,25 @@ Add performance feedback/scores.
   "efficiencyScore": 90,
   "qualityScore": 85,
   "reliabilityScore": 88,
+  "rating": 4,
+  "reviewTitle": "Monthly Review",
   "feedback": "Great work this month"
 }
 ```
 
 ---
 
-## 7. HR Operations — Finance
+## 7. HR Operations — Finance (Salary Processing)
 
-### `GET /finance/payroll` 🔒 HR/Admin only
-List all payroll records.
+### `GET /finance/salary-list` 🔒 HR/Admin only
+Get the list of employees for the month to process salary.
+**Query Params:** `month` (e.g. "October"), `year` (2023).
+**Returns:** Array of `{ userId (with profile/name/dept), basicSalary, bonus, deductions, netPay, status }`.
+
+---
 
 ### `POST /finance/salary/process` 🔒 HR/Admin only
-Process salary for an employee.
-
+Update or create a salary record for a specific employee for the month.
 **Body:**
 ```json
 {
@@ -221,13 +377,17 @@ Process salary for an employee.
   "month": "October",
   "year": 2023,
   "basicSalary": 50000,
-  "allowances": 10000,
-  "deductions": 2000
+  "bonus": 2000,
+  "deductions": 500,
+  "status": "Processed"
 }
 ```
+*(Net Pay is auto-calculated on the server: base + bonus - deductions).*
+
+---
 
 ### `GET /finance/payslip/:id`
-Get a specific payslip by payroll ID.
+Fetch detailed payslip for a specific payroll record.
 
 ---
 

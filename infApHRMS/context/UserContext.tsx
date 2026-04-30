@@ -1,14 +1,17 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { AuthApiUser, fetchEmployeeProfile, getStoredAuthSession } from '../services/auth';
 
 export interface UserProfile {
   name: string;
   role: string;
-  systemRole: 'admin' | 'hr' | 'employee';
-  avatar: any;
+  systemRole: 'employee' | 'manager' | 'hr' | 'admin' | 'main_admin';
+  avatar: string | number;
   employeeId: string;
   email: string;
   department: string;
   joiningDate: string;
+  phone?: string;
+  address?: string;
   settings: {
     darkMode: boolean;
     language: string;
@@ -20,8 +23,10 @@ export interface UserProfile {
 
 interface UserContextType {
   user: UserProfile;
+  isHydrating: boolean;
   updateUser: (updates: Partial<UserProfile>) => void;
   updateSettings: (updates: Partial<UserProfile['settings']>) => void;
+  syncUserFromApi: (apiUser: AuthApiUser & { phone?: string; address?: string; avatar?: string; profileImage?: string; systemRole?: UserProfile['systemRole']; role?: string; }) => void;
 }
 
 const defaultUser: UserProfile = {
@@ -46,6 +51,25 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export const UserProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserProfile>(defaultUser);
+  const [isHydrating, setIsHydrating] = useState(true);
+
+  const syncUserFromApi: UserContextType['syncUserFromApi'] = (apiUser) => {
+    setUser((prev) => ({
+      ...prev,
+      name: apiUser.name || prev.name,
+      role: apiUser.designation || apiUser.role || prev.role,
+      systemRole: (apiUser.systemRole || apiUser.role || prev.systemRole) as UserProfile['systemRole'],
+      email: apiUser.email || prev.email,
+      employeeId: apiUser.employeeId || prev.employeeId,
+      department: apiUser.department || prev.department,
+      joiningDate: apiUser.joiningDate
+        ? new Date(apiUser.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : prev.joiningDate,
+      phone: apiUser.phone ?? prev.phone,
+      address: apiUser.address ?? prev.address,
+      avatar: apiUser.profileImage || apiUser.avatar || prev.avatar,
+    }));
+  };
 
   const updateUser = (updates: Partial<UserProfile>) => {
     setUser((prev) => ({ ...prev, ...updates }));
@@ -58,8 +82,38 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     }));
   };
 
+  useEffect(() => {
+    const hydrateUser = async () => {
+      try {
+        const session = await getStoredAuthSession();
+        if (session?.user) {
+          syncUserFromApi(session.user);
+        }
+
+        if (session?.token) {
+          try {
+            const response = await fetchEmployeeProfile();
+            syncUserFromApi({
+              _id: response.data.id,
+              ...response.data,
+              role: response.data.systemRole,
+              designation: response.data.role,
+              profileImage: response.data.avatar,
+            });
+          } catch (error) {
+            console.warn('Unable to refresh profile from API:', error);
+          }
+        }
+      } finally {
+        setIsHydrating(false);
+      }
+    };
+
+    hydrateUser();
+  }, []);
+
   return (
-    <UserContext.Provider value={{ user, updateUser, updateSettings }}>
+    <UserContext.Provider value={{ user, isHydrating, updateUser, updateSettings, syncUserFromApi }}>
       {children}
     </UserContext.Provider>
   );

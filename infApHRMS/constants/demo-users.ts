@@ -1,7 +1,7 @@
 // Demo users for local development/testing
 // Each user has predefined credentials and a role
 
-export type UserRole = 'employee' | 'hr' | 'admin';
+export type UserRole = 'employee';
 
 export interface DemoUser {
   id: string;
@@ -25,26 +25,6 @@ export const DEMO_USERS: DemoUser[] = [
     department: 'Engineering',
     designation: 'Senior Product Designer',
   },
-  {
-    id: 'hr-001',
-    name: 'Priya Sharma',
-    email: 'priya@infiap.com',
-    password: '123456',
-    role: 'hr',
-    avatar: 'PS',
-    department: 'Human Resources',
-    designation: 'HR Manager',
-  },
-  {
-    id: 'admin-001',
-    name: 'Rajesh Kumar',
-    email: 'rajesh@infiap.com',
-    password: '123456',
-    role: 'admin',
-    avatar: 'RK',
-    department: 'Administration',
-    designation: 'System Administrator',
-  },
 ];
 
 /**
@@ -53,11 +33,10 @@ export const DEMO_USERS: DemoUser[] = [
  */
 export function authenticateDemoUser(
   email: string,
-  password: string,
-  role: UserRole
+  password: string
 ): DemoUser | null {
   const user = DEMO_USERS.find(
-    (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password && u.role === role
+    (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
   );
   return user || null;
 }

@@ -1,58 +1,33 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, usePathname } from 'expo-router';
 import Animated, {
   useAnimatedStyle,
-  withSpring,
   useSharedValue,
+  withSpring,
   withTiming,
-  interpolateColor
 } from 'react-native-reanimated';
 
 const { width } = Dimensions.get('window');
 
 const NAV_ITEMS = [
   {
-    icon: 'home-outline',
-    activeIcon: 'home',
-    label: 'Home',
-    route: '/(admin)/'
-  },
-  {
     icon: 'people-outline',
     activeIcon: 'people',
-    label: 'Staff',
-    route: '/(admin)/staff'
-  },
-  {
-    icon: 'notifications-outline',
-    activeIcon: 'notifications',
-    label: 'Alerts',
-    route: '/(admin)/notifications'
-  },
-  {
-    icon: 'bar-chart-outline',
-    activeIcon: 'bar-chart',
-    label: 'Stats',
-    route: '/(admin)/stats'
-  },
-  {
-    icon: 'person-outline',
-    activeIcon: 'person',
-    label: 'Profile',
-    route: '/(admin)/profile'
+    label: 'Manage HR',
+    route: '/(admin)/manage-hr',
   },
 ];
 
-const NavItem = ({ item, isActive }: { item: typeof NAV_ITEMS[0], isActive: boolean }) => {
+const NavItem = ({ item, isActive }: { item: typeof NAV_ITEMS[number]; isActive: boolean }) => {
   const scale = useSharedValue(1);
   const opacity = useSharedValue(0.6);
 
   useEffect(() => {
     scale.value = withSpring(isActive ? 1.15 : 1);
     opacity.value = withTiming(isActive ? 1 : 0.6);
-  }, [isActive]);
+  }, [isActive, opacity, scale]);
 
   const animatedIconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -72,17 +47,13 @@ const NavItem = ({ item, isActive }: { item: typeof NAV_ITEMS[0], isActive: bool
         <Ionicons
           name={(isActive ? item.activeIcon : item.icon) as any}
           size={24}
-          color={isActive ? '#4f46e5' : '#94a3b8'}
+          color={isActive ? '#007AFF' : '#94a3b8'}
         />
       </Animated.View>
       <Animated.Text style={[styles.navLabel, isActive && styles.navLabelActive, animatedTextStyle]}>
         {item.label}
       </Animated.Text>
-      {isActive && (
-        <Animated.View
-          style={styles.activeIndicator}
-        />
-      )}
+      {isActive ? <View style={styles.activeIndicator} /> : null}
     </TouchableOpacity>
   );
 };
@@ -93,13 +64,9 @@ export const AdminBottomNav = () => {
   return (
     <View style={styles.container}>
       <View style={styles.floatingNav}>
-        {NAV_ITEMS.map((item, i) => {
-          const isActive = pathname === item.route ||
-            (item.route === '/(admin)/' && (pathname === '/(admin)' || pathname === '/(admin)/')) ||
-            (item.route !== '/(admin)/' && pathname.startsWith(item.route));
-
-          return <NavItem key={i} item={item} isActive={isActive} />;
-        })}
+        {NAV_ITEMS.map((item) => (
+          <NavItem key={item.route} item={item} isActive={pathname === item.route} />
+        ))}
       </View>
     </View>
   );
@@ -120,9 +87,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     width: width * 0.9,
-    height: 70,
+    minHeight: 70,
     borderRadius: 35,
-    justifyContent: 'space-around',
+    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 10,
     shadowColor: '#000',
@@ -136,8 +103,9 @@ const styles = StyleSheet.create({
   navItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1,
-    height: '100%',
+    minWidth: 120,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
   },
   navLabel: {
     fontSize: 10,
@@ -146,7 +114,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   navLabelActive: {
-    color: '#4f46e5',
+    color: '#007AFF',
   },
   activeIndicator: {
     position: 'absolute',
@@ -154,12 +122,12 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#4f46e5',
+    backgroundColor: '#007AFF',
   },
   iconGlow: {
-    shadowColor: '#4f46e5',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 10,
-  }
+  },
 });

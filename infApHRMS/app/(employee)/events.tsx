@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Platform, Modal, TextInput, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -94,28 +94,47 @@ export default function EventsPage() {
 
   const handleAddEvent = () => {
     if (!newTitle || !newDate) return;
-    
-    const newEvent = {
-        id: Math.random().toString(),
-        title: newTitle,
-        date: newDate,
-        time: 'TBD',
-        location: 'Office',
-        description: newDesc,
-        type: 'Upcoming' as const,
-        category: 'Event',
-        image: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=400&q=80'
-    };
+    const payload = { title: newTitle, date: newDate, description: newDesc, category: 'Event' };
 
+    // optimistic add
+    const newEvent = {
+      id: Math.random().toString(),
+      title: newTitle,
+      date: newDate,
+      time: 'TBD',
+      location: 'Office',
+      description: newDesc,
+      type: 'Upcoming' as const,
+      category: 'Event',
+      image: 'https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?w=400&q=80'
+    };
     setEvents([newEvent, ...events]);
     setModalVisible(false);
     setNewTitle('');
     setNewDate('');
     setNewDesc('');
-    
     setSuccessVisible(true);
     setTimeout(() => setSuccessVisible(false), 2000);
+
+    const api = require('../../constants/api').ADMIN_API_URL;
+    fetch(`${api}/events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(() => {
+      // ignore for now; optimistic UI kept
+    });
   };
+
+  useEffect(() => {
+    const api = require('../../constants/api').ADMIN_API_URL;
+    fetch(`${api}/events?type=upcoming`).then(r => r.json()).then(json => {
+      if (json && json.status === 'Success' && Array.isArray(json.data)) {
+        const mapped = json.data.map((e: any) => ({ id: e.id, title: e.title, date: (new Date(e.date)).toDateString(), time: e.time || 'TBD', location: e.location || 'Office', description: e.description, type: 'Upcoming', category: e.category, image: e.image }));
+        setEvents(mapped);
+      }
+    }).catch(() => {});
+  }, []);
 
   return (
     <View style={styles.container}>

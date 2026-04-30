@@ -241,6 +241,119 @@ Base URL: `https://api.yourdomain.com/api/v1`
 
 ---
 
+## 2️⃣ Main Admin Dashboard APIs (Protected: `main_admin`)
+
+All endpoints in this section require a valid JWT token and `main_admin` role.
+Base path: `/main-admin-dashboard`
+
+### ➤ Home Summary
+**GET** `/main-admin-dashboard/home-summary`
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "totalCompanies": 12,
+    "totalEmployees": 420,
+    "totalHRManagers": 15,
+    "activeUsers": 188,
+    "pendingRegistration": {
+      "total": 9,
+      "users": 6,
+      "companies": 3
+    },
+    "systemHealth": {
+      "status": "healthy",
+      "maintenanceMode": false,
+      "uptimePercentage": 99.9,
+      "processUptimeSeconds": 12450,
+      "integrationsConnected": 3,
+      "integrationsExpected": 3,
+      "checkedAt": "2026-04-15T11:10:00.000Z"
+    },
+    "criticalAlerts": 0
+  }
+}
+```
+
+### ➤ Platform Activity Graph
+**GET** `/main-admin-dashboard/platform-activity?period=7d`
+
+Supported periods: `7d`, `30d`, `90d`
+
+### ➤ Registered Companies List
+**GET** `/main-admin-dashboard/registered-companies?page=1&limit=20&search=infi&sortBy=createdAt&sortOrder=desc`
+
+Returns paginated list with per-company user stats and registration status.
+
+### ➤ System Integrations Status
+**GET** `/main-admin-dashboard/system-integrations/status`
+
+Returns cloud, email, and security integration connectivity summary.
+
+### ➤ System Alerts
+**GET** `/main-admin-dashboard/system-alerts?page=1&limit=20&type=WARNING&status=active`
+
+Includes generated core alerts:
+- API Latency Spike
+- System Maintenance
+- Security Audit Passed
+
+### ➤ Acknowledge Alert
+**POST** `/main-admin-dashboard/system-alerts/:id/acknowledge`
+
+**Body:**
+```json
+{
+  "notes": "Investigating with infra team"
+}
+```
+
+### ➤ Quick Action: Add Company
+**POST** `/main-admin-dashboard/quick-actions/add-company`
+
+**Body:**
+```json
+{
+  "companyName": "Acme Labs",
+  "email": "hello@acmelabs.com",
+  "phone": "9999999999",
+  "address": "Pune, India",
+  "industry": "SaaS",
+  "totalEmployees": 45,
+  "admin": {
+    "name": "Acme Admin",
+    "email": "admin@acmelabs.com",
+    "password": "StrongPass@123"
+  }
+}
+```
+
+### ➤ Quick Action: Previous Users Info
+**GET** `/main-admin-dashboard/quick-actions/previous-users?page=1&limit=20&role=hr&search=john`
+
+### ➤ Quick Action: Deep Audit
+**POST** `/main-admin-dashboard/quick-actions/deep-audit`
+
+Returns risk score and categorized findings (`critical`, `warning`, `info`).
+
+### ➤ Quick Action: Broadcast
+**POST** `/main-admin-dashboard/quick-actions/broadcast`
+
+**Body:**
+```json
+{
+  "category": "announcement",
+  "headline": "Planned maintenance",
+  "details": "Maintenance window at 11:00 PM IST",
+  "targetedAudience": "all_employee",
+  "targetDepartments": []
+}
+```
+
+---
+
 ## 3️⃣ Employee Dashboard APIs
 
 ### Dashboard Data

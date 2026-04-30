@@ -43,6 +43,10 @@ const userSchema = new mongoose.Schema(
         resetPasswordExpires: Date,
         twoFactorOTP: String,
         twoFactorOTPExpires: Date,
+        firstLogin2FAVerified: {
+            type: Boolean,
+            default: false
+        },
         dob: {
             type: Date
         },
@@ -81,6 +85,65 @@ const userSchema = new mongoose.Schema(
             type: String,
             enum: ["full-time", "part-time", "contract", "internship", "remote"],
             default: "full-time"
+        },
+        status: {
+            type: String,
+            enum: ["Active", "On Leave", "Terminate"],
+            default: "Active"
+        },
+        currentBaseSalary: {
+            type: Number
+        },
+        complianceStatus: {
+            type: String,
+            enum: ["Compliant", "Verified", "Under Review", "Action Required"],
+            default: "Compliant"
+        },
+        securitySettings: {
+            twoFactorEnabled: {
+                type: Boolean,
+                default: false
+            },
+            loginAlerts: {
+                type: Boolean,
+                default: true
+            },
+            recoveryEmail: {
+                type: String,
+                trim: true,
+                lowercase: true
+            },
+            sessionTimeoutMinutes: {
+                type: Number,
+                default: 30,
+                min: 5,
+                max: 1440
+            },
+            passwordUpdatedAt: {
+                type: Date
+            }
+        },
+        notificationPreferences: {
+            emailNotifications: {
+                type: Boolean,
+                default: true
+            },
+            hrAnnouncements: {
+                type: Boolean,
+                default: true
+            },
+            adminAnnouncements: {
+                type: Boolean,
+                default: true
+            },
+            policyUpdates: {
+                type: Boolean,
+                default: true
+            },
+            alerts: {
+                type: Boolean,
+                default: true
+            }
         }
     },
     { timestamps: true }

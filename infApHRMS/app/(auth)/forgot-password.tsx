@@ -31,7 +31,7 @@ export default function ForgotPassword() {
           <View style={styles.card}>
             <Text style={styles.title}>Reset your password</Text>
             <Text style={styles.subtitle}>
-              Enter the email address associated with your account and we'll send you a link to reset your password.
+              Enter the email address associated with your account and we’ll send you a link to reset your password.
             </Text>
 
             {/* Email */}
@@ -61,7 +61,7 @@ export default function ForgotPassword() {
             <View style={styles.backContainer}>
               <Link href="/(auth)/sign-in" asChild>
                 <TouchableOpacity style={styles.backButton}>
-                  <Ionicons name="arrow-back" size={16} color="#5a55d2" style={{ marginRight: 6 }} />
+                  <Ionicons name="arrow-back" size={16} color="#007AFF" style={{ marginRight: 6 }} />
                   <Text style={styles.backText}>Back to Sign In</Text>
                 </TouchableOpacity>
               </Link>
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   title: {
-    fontSize: 22,
+    fontSize: 15,
     fontWeight: '700',
     color: '#111827',
     marginBottom: 12,
@@ -143,13 +143,13 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   button: {
-    backgroundColor: '#5a55d2',
+    backgroundColor: '#007AFF',
     borderRadius: 8,
     height: 50,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#5a55d2',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   backText: {
-    color: '#5a55d2',
+    color: '#007AFF',
     fontSize: 15,
     fontWeight: '600',
   },
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   footerLink: {
-    color: '#5a55d2',
+    color: '#007AFF',
     fontWeight: '500',
   },
 });

@@ -19,20 +19,51 @@ import Animated, {
 
 const { width } = Dimensions.get('window');
 
-const TREND_DATA = [
-  { month: 'MAY', value: 0.6, amount: '$3,200' },
-  { month: 'JUN', value: 0.7, amount: '$3,350' },
-  { month: 'JUL', value: 0.05, amount: '$200' },
-  { month: 'AUG', value: 0.85, amount: '$3,400' },
-  { month: 'SEP', value: 0.05, amount: '$200' },
-  { month: 'OCT', value: 1.0, active: true, amount: '$3,500' },
-];
+// Generate dynamic trend data based on current date
+const generateTrendData = () => {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  
+  const data = [];
+  for (let i = 5; i >= 0; i--) {
+    const monthIndex = (currentMonth - i + 12) % 12;
+    const isActive = i === 0;
+    data.push({
+      month: months[monthIndex],
+      value: Math.random() * 0.8 + 0.2,
+      amount: '₹' + Math.floor(Math.random() * 2000 + 3000),
+      active: isActive
+    });
+  }
+  return data;
+};
 
-const HISTORY_DATA = [
-  { id: '1', month: 'September 2023', salary: '$3,450.00', date: 'Sept 30', status: 'Paid' },
-  { id: '2', month: 'August 2023', salary: '$3,450.00', date: 'Aug 31', status: 'Paid' },
-  { id: '3', month: 'July 2023', salary: '$3,450.00', date: 'July 31', status: 'Paid' },
-];
+const getTrendData = () => generateTrendData();
+
+// Generate dynamic history data
+const generateHistoryData = () => {
+  const now = new Date();
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const history = [];
+  
+  for (let i = 0; i < 3; i++) {
+    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthName = months[date.getMonth()];
+    const year = date.getFullYear();
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    
+    history.push({
+      id: String(i),
+      month: `${monthName} ${year}`,
+      salary: '₹' + Math.floor(Math.random() * 1000 + 3000) + '.00',
+      date: `${monthName.substring(0, 3)} ${lastDay}`,
+      status: 'Paid'
+    });
+  }
+  return history;
+};
 
 const SalaryBar = ({ item, index, showTooltip, setShowTooltip, activeTooltip }: any) => {
   const heightValue = useSharedValue(0);
@@ -77,6 +108,14 @@ export default function PayrollDashboard() {
   const [downloading, setDownloading] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
+  const [trendData] = useState(() => getTrendData());
+  const [historyData] = useState(() => generateHistoryData());
+  
+  // Get current date/month/year
+  const now = new Date();
+  const currentMonth = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const currentSalary = '₹' + Math.floor(Math.random() * 1000 + 3500);
+  const payDate = `${now.toLocaleString('en-US', { month: 'long' })} ${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}, ${now.getFullYear()}`;
 
   const handleDownload = () => {
     setDownloading(true);
@@ -111,15 +150,15 @@ export default function PayrollDashboard() {
         <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.salaryCard}>
           <View style={styles.cardDecoration} />
           <View style={styles.cardHeader}>
-            <Text style={styles.cardLabel}>Current Month Salary</Text>
+            <Text style={styles.cardLabel}>Current Month Salary ({currentMonth})</Text>
             <View style={styles.paidBadge}>
               <Text style={styles.paidText}>PAID</Text>
             </View>
           </View>
-          <Text style={styles.salaryAmount}>$3,500.00</Text>
+          <Text style={styles.salaryAmount}>{currentSalary}</Text>
           <View style={styles.payDateContainer}>
             <Ionicons name="calendar-outline" size={18} color="#fff" />
-            <Text style={styles.payDateText}>Pay Date: October 31, 2023</Text>
+            <Text style={styles.payDateText}>Pay Date: {payDate}</Text>
           </View>
         </Animated.View>
 
@@ -133,7 +172,7 @@ export default function PayrollDashboard() {
 
         <Animated.View entering={FadeInDown.delay(200).duration(600)} style={styles.trendCard}>
           <View style={styles.chartArea}>
-            {TREND_DATA.map((item, index) => (
+            {trendData.map((item, index) => (
               <SalaryBar 
                 key={item.month} 
                 item={item} 
@@ -180,7 +219,7 @@ export default function PayrollDashboard() {
         </View>
 
         <View style={styles.historyList}>
-          {HISTORY_DATA.map((item, index) => (
+          {historyData.map((item, index) => (
             <Animated.View 
               key={item.id}
               entering={FadeInRight.delay(500 + index * 100).springify()}
@@ -232,32 +271,32 @@ export default function PayrollDashboard() {
              
              <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Basic Salary</Text>
-                <Text style={styles.breakdownValue}>$2,500.00</Text>
+                <Text style={styles.breakdownValue}>₹2,500.00</Text>
              </View>
              <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>HRA (House Rent Allowance)</Text>
-                <Text style={styles.breakdownValue}>$500.00</Text>
+                <Text style={styles.breakdownValue}>₹500.00</Text>
              </View>
              <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Conv. Allowance</Text>
-                <Text style={styles.breakdownValue}>$300.00</Text>
+                <Text style={styles.breakdownValue}>₹300.00</Text>
              </View>
              <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Special Allowance</Text>
-                <Text style={styles.breakdownValue}>$200.00</Text>
+                <Text style={styles.breakdownValue}>₹200.00</Text>
              </View>
              <View style={[styles.breakdownRow, styles.deductionBorder]}>
                 <Text style={styles.deductionLabel}>Professional Tax (PT)</Text>
-                <Text style={styles.deductionValue}>-$50.00</Text>
+                <Text style={styles.deductionValue}>-₹50.00</Text>
              </View>
              <View style={styles.breakdownRow}>
                 <Text style={styles.deductionLabel}>Other Deductions</Text>
-                <Text style={styles.deductionValue}>-$0.00</Text>
+                <Text style={styles.deductionValue}>-₹0.00</Text>
              </View>
              
              <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>Net Payable Salary</Text>
-                <Text style={styles.totalValue}>$3,450.00</Text>
+                <Text style={styles.totalValue}>₹3,450.00</Text>
              </View>
              
              <TouchableOpacity style={styles.closeBtn} onPress={() => setDetailsVisible(false)}>

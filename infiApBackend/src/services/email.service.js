@@ -1,45 +1,105 @@
-const nodemailer = require("nodemailer");
+const RESEND_API_URL = process.env.RESEND_API_URL || "https://api.resend.com/emails";
+const DEFAULT_FROM_EMAIL = "InfiAP HRMS <onboarding@resend.dev>";
 
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    secure: false, // true for 465, false for other ports
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-    },
-});
+const isConfiguredForEmail = () => {
+    const apiKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL;
+
+    if (!apiKey || !fromEmail) {
+        return false;
+    }
+
+    const placeholderValues = [apiKey, fromEmail].some((value) =>
+        typeof value === "string" &&
+        (value.includes("your_resend") || value.includes("example.com"))
+    );
+
+    return !placeholderValues;
+};
+
+const sendEmail = async ({ to, subject, html }) => {
+    if (!isConfiguredForEmail()) {
+        console.warn("Resend not configured. Skipping email delivery.");
+        return false;
+    }
+
+    const response = await fetch(RESEND_API_URL, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            from: process.env.RESEND_FROM_EMAIL || DEFAULT_FROM_EMAIL,
+            to: Array.isArray(to) ? to : [to],
+            subject,
+            html,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Resend API error:", errorText);
+        throw new Error("Could not send email");
+    }
+
+    return true;
+};
 
 const sendVerificationEmail = async (email, token) => {
     try {
         const verificationLink = `${process.env.CLIENT_URL}/verify-email?token=${token}`;
-
-        const mailOptions = {
-            from: process.env.SMTP_USER,
+        const emailSent = await sendEmail({
             to: email,
-            subject: "Verify Your Email - AbhiProject",
+            subject: "Verify Your Email - InfiAP HRMS",
             html: `
                 <h1>Email Verification</h1>
                 <p>Please click the link below to verify your email address:</p>
                 <a href="${verificationLink}">${verificationLink}</a>
                 <p>This link will expire in 24 hours.</p>
             `,
-        };
+        });
 
-        await transporter.sendMail(mailOptions);
-        console.log(`Verification email sent to ${email}`);
+        if (emailSent) {
+            console.log(`Verification email sent to ${email}`);
+        }
+
+        return emailSent;
     } catch (error) {
         console.error("Error sending verification email:", error);
         throw new Error("Could not send verification email");
     }
 };
 
+const sendLoginOTPEmail = async (email, otp) => {
+    try {
+        const emailSent = await sendEmail({
+            to: email,
+            subject: "Your InfiAP login verification code",
+            html: `
+                <h1>Secure Login Code</h1>
+                <p>Your 6-digit verification code is:</p>
+                <h2 style="letter-spacing: 4px;">${otp}</h2>
+                <p>This code will expire in 10 minutes.</p>
+            `,
+        });
+
+        if (emailSent) {
+            console.log(`Login OTP email sent to ${email}`);
+        }
+
+        return emailSent;
+    } catch (error) {
+        console.error("Error sending login OTP email:", error);
+        throw new Error("Could not send login OTP email");
+    }
+};
+
 const sendBookingConfirmationEmail = async (email, name, date) => {
     try {
-        const mailOptions = {
-            from: process.env.SMTP_USER,
+        await sendEmail({
             to: email,
-            subject: "Meeting Request Received - AbhiProject",
+            subject: "Meeting Request Received - InfiAP HRMS",
             html: `
                 <h1>Meeting Request Received</h1>
                 <p>Hi ${name},</p>
@@ -48,9 +108,7 @@ const sendBookingConfirmationEmail = async (email, name, date) => {
                 <br>
                 <p>Best Regards,<br>AbhiProject Team</p>
             `,
-        };
-
-        await transporter.sendMail(mailOptions);
+        });
         console.log(`Booking confirmation email sent to ${email}`);
     } catch (error) {
         console.error("Error sending booking email:", error);
@@ -60,10 +118,9 @@ const sendBookingConfirmationEmail = async (email, name, date) => {
 
 const sendMeetingLinkEmail = async (email, name, date, link) => {
     try {
-        const mailOptions = {
-            from: process.env.SMTP_USER,
+        await sendEmail({
             to: email,
-            subject: "Meeting Confirmed - AbhiProject",
+            subject: "Meeting Confirmed - InfiAP HRMS",
             html: `
                 <h1>Meeting Confirmed</h1>
                 <p>Hi ${name},</p>
@@ -74,9 +131,7 @@ const sendMeetingLinkEmail = async (email, name, date, link) => {
                 <br>
                 <p>Best Regards,<br>AbhiProject Team</p>
             `,
-        };
-
-        await transporter.sendMail(mailOptions);
+        });
         console.log(`Meeting link email sent to ${email}`);
     } catch (error) {
         console.error("Error sending meeting link email:", error);
@@ -85,6 +140,8 @@ const sendMeetingLinkEmail = async (email, name, date, link) => {
 
 module.exports = {
     sendVerificationEmail,
+    sendLoginOTPEmail,
     sendBookingConfirmationEmail,
     sendMeetingLinkEmail,
+    isConfiguredForEmail,
 };

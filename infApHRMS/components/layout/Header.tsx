@@ -5,12 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSidebar } from '../../context/SidebarContext';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { UI } from '@/constants/ui';
 
 interface HeaderProps {
   title?: string;
@@ -39,7 +39,7 @@ const Header = ({ title, subtitle, showBack, onBackPress, rightElement, backIcon
       <View style={styles.header}>
         <View style={styles.leftSection}>
           {showBack ? (
-            <TouchableOpacity onPress={handleBack} style={styles.iconBtn}>
+            <TouchableOpacity onPress={handleBack} style={styles.iconBtn} activeOpacity={0.75}>
               <Ionicons name={backIconName || "chevron-back"} size={24} color="#1e293b" />
             </TouchableOpacity>
           ) : !hideLogo ? (
@@ -62,7 +62,7 @@ const Header = ({ title, subtitle, showBack, onBackPress, rightElement, backIcon
         <View style={styles.rightSection}>
           {rightElement}
           {!hideSidebar && (
-            <TouchableOpacity onPress={openSidebar} style={styles.iconBtn}>
+            <TouchableOpacity onPress={openSidebar} style={styles.iconBtn} activeOpacity={0.75}>
               <Ionicons name="menu-outline" size={28} color="#1e293b" />
             </TouchableOpacity>
           )}
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: UI.colors.border,
     height: 60,
   },
   leftSection: {
@@ -99,24 +99,30 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconBtn: {
-    padding: 0,
-    marginLeft: -4,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: UI.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: UI.colors.border,
   },
   headerLogo: {
-    width: 100,
-    height: 32,
+    width: 55,
+    height: 40,
   },
   titleContainer: {
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 16,
+    fontSize: UI.type.section,
     fontWeight: '800',
-    color: '#0f172a',
+    color: UI.colors.text,
   },
   headerSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
+    fontSize: UI.type.tiny,
+    color: UI.colors.textMuted,
     fontWeight: '600',
     marginTop: 0,
   },

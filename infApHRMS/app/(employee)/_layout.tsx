@@ -1,15 +1,11 @@
-import { Stack, Redirect } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useUser } from '@/context/UserContext';
 
 export default function EmployeeLayout() {
-  const { user } = useUser();
-
-  if (user.systemRole !== 'employee') {
-    return <Redirect href={`/(${user.systemRole})/` as any} />;
-  }
+  useUser();
 
   return (
-    <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+    <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="attendance" />
       <Stack.Screen name="attendance-logging" />

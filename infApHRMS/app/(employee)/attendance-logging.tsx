@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Image, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Animated, {
@@ -8,13 +8,11 @@ import Animated, {
   withRepeat,
   withTiming,
   useSharedValue,
-  interpolate,
 } from 'react-native-reanimated';
 import { BottomNav } from '../../components/BottomNav';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
-
-const { width } = Dimensions.get('window');
+import { submitEmployeePunch } from '../../services/auth';
+import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
 
 const WORK_MODES = [
   { id: 'office', label: 'Office', icon: 'business-outline', activeIcon: 'business' },
@@ -23,9 +21,19 @@ const WORK_MODES = [
   { id: 'offsite', label: 'Offsite', icon: 'location-outline', activeIcon: 'location' },
 ];
 
+type CurrentLocation = {
+  latitude: number;
+  longitude: number;
+  addressLine: string;
+  localityLine: string;
+};
+
 export default function AttendanceLogging() {
   const [selectedMode, setSelectedMode] = useState('office');
   const [isConfirming, setIsConfirming] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<CurrentLocation | null>(null);
+  const [locationLoading, setLocationLoading] = useState(true);
+  const [locationError, setLocationError] = useState('');
 
   // Animations
   const logoScale = useSharedValue(0);
@@ -33,12 +41,60 @@ export default function AttendanceLogging() {
   const rippleOpacity = useSharedValue(0.5);
 
   useEffect(() => {
-    // Logo entrance
-    logoScale.value = withSpring(1, { damping: 12 });
+    // Logo entrance with optimized spring
+    logoScale.value = withSpring(1, { damping: 12, mass: 1, overshootClamping: false });
 
-    // Ripple effect for map marker
-    rippleScale.value = withRepeat(withTiming(2, { duration: 2000 }), -1, false);
-    rippleOpacity.value = withRepeat(withTiming(0, { duration: 2000 }), -1, false);
+    // Ripple effect for map marker - smoother and more efficient
+    rippleScale.value = withRepeat(withTiming(2.5, { duration: 1800 }), -1, false);
+    rippleOpacity.value = withRepeat(withTiming(0, { duration: 1800 }), -1, false);
+  }, [logoScale, rippleOpacity, rippleScale]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadCurrentLocation = async () => {
+      try {
+        setLocationLoading(true);
+        setLocationError('');
+
+        const location = await getExactCurrentLocation();
+
+        if (!isActive) {
+          return;
+        }
+
+        setCurrentLocation({
+          latitude: location.latitude,
+          longitude: location.longitude,
+          addressLine: formatExactLocationLabel(location),
+          localityLine: location.localityLabel,
+        });
+      } catch (error: any) {
+        if (isActive) {
+          setCurrentLocation(null);
+          const errorMsg = error?.message || 'Unable to fetch the current location.';
+          setLocationError(errorMsg);
+        }
+      } finally {
+        if (isActive) {
+          setLocationLoading(false);
+        }
+      }
+    };
+
+    loadCurrentLocation();
+
+    // Set up automatic location refresh every 30 seconds for live tracking
+    const locationRefreshInterval = setInterval(() => {
+      if (isActive) {
+        loadCurrentLocation();
+      }
+    }, 30000);
+
+    return () => {
+      isActive = false;
+      clearInterval(locationRefreshInterval);
+    };
   }, []);
 
   const logoAnimatedStyle = useAnimatedStyle(() => ({
@@ -50,13 +106,54 @@ export default function AttendanceLogging() {
     opacity: rippleOpacity.value,
   }));
 
-  const handleConfirm = () => {
+  const handleRefreshLocation = async () => {
+    setLocationLoading(true);
+    try {
+      const location = await getExactCurrentLocation();
+      setCurrentLocation({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        addressLine: formatExactLocationLabel(location),
+        localityLine: location.localityLabel,
+      });
+      setLocationError('');
+    } catch (error: any) {
+      const errorMsg = error?.message || 'Unable to fetch the current location.';
+      setLocationError(errorMsg);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!currentLocation) {
+      setLocationError('Location is required to check-in.');
+      return;
+    }
+
     setIsConfirming(true);
-    // Simulate verification
-    setTimeout(() => {
+    setLocationError(''); // Clear any previous errors
+    
+    try {
+      const response = await submitEmployeePunch({
+        PunchType: 1,
+        Latitude: currentLocation.latitude,
+        Longitude: currentLocation.longitude,
+        WorkMode: selectedMode === 'wfh' ? 2 : selectedMode === 'meeting' ? 3 : selectedMode === 'offsite' ? 4 : 1,
+      });
+      
+      // Check if response indicates success
+      if (response && (response.status === 'Success' || response.status === 'success' || response.PunchTime)) {
+        router.back();
+      } else {
+        setLocationError(response?.message || 'Unable to submit the check-in. Please try again.');
+      }
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Unable to submit the check-in. Please check your internet connection and try again.';
+      setLocationError(errorMessage);
+    } finally {
       setIsConfirming(false);
-      router.back();
-    }, 2000);
+    }
   };
 
   return (
@@ -65,8 +162,16 @@ export default function AttendanceLogging() {
         title="Attendance Logging" 
         showBack={true} 
         rightElement={
-          <TouchableOpacity style={{ padding: 4 }}>
-            <Ionicons name="information-circle-outline" size={24} color="#1e293b" />
+          <TouchableOpacity 
+            style={{ padding: 4 }}
+            onPress={handleRefreshLocation}
+            disabled={locationLoading}
+          >
+            <Ionicons 
+              name={locationLoading ? "sync" : "refresh"} 
+              size={24} 
+              color="#1e293b" 
+            />
           </TouchableOpacity>
         }
       />
@@ -135,31 +240,51 @@ export default function AttendanceLogging() {
             <View style={styles.locationHeader}>
               <Text style={styles.locationTitle}>CURRENT LOCATION</Text>
               <View style={styles.verifiedBadge}>
-                <Ionicons name="shield-checkmark" size={14} color="#16a34a" />
-                <Text style={styles.verifiedText}>Location Verified</Text>
+                {locationLoading ? (
+                  <ActivityIndicator size="small" color="#16a34a" />
+                ) : (
+                  <Ionicons
+                    name={locationError ? 'warning-outline' : 'shield-checkmark'}
+                    size={14}
+                    color={locationError ? '#dc2626' : '#16a34a'}
+                  />
+                )}
+                <Text style={[styles.verifiedText, locationError && styles.errorText]}>
+                  {locationLoading ? 'Fetching current location' : locationError || 'Location Verified'}
+                </Text>
               </View>
             </View>
 
-            <View style={styles.coordRow}>
-              <View style={styles.coordItem}>
-                <Text style={styles.coordLabel}>Latitude</Text>
-                <Text style={styles.coordValue}>19.0760° N</Text>
-              </View>
-              <View style={styles.coordItem}>
-                <Text style={styles.coordLabel}>Longitude</Text>
-                <Text style={styles.coordValue}>72.8777° E</Text>
-              </View>
-            </View>
+            {currentLocation ? (
+              <>
+                <View style={styles.coordRow}>
+                  <View style={styles.coordItem}>
+                    <Text style={styles.coordLabel}>Latitude</Text>
+                    <Text style={styles.coordValue}>{currentLocation.latitude.toFixed(4)}°</Text>
+                  </View>
+                  <View style={styles.coordItem}>
+                    <Text style={styles.coordLabel}>Longitude</Text>
+                    <Text style={styles.coordValue}>{currentLocation.longitude.toFixed(4)}°</Text>
+                  </View>
+                </View>
 
-            <View style={styles.addressRow}>
-              <View style={styles.addressIcon}>
-                <Ionicons name="location" size={20} color="#4f46e5" />
+                <View style={styles.addressRow}>
+                  <View style={styles.addressIcon}>
+                    <Ionicons name="location" size={20} color="#4f46e5" />
+                  </View>
+                  <View style={styles.addressTextWrap}>
+                    <Text style={styles.addressMain}>{currentLocation.addressLine}</Text>
+                    <Text style={styles.addressSub}>{currentLocation.localityLine}</Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <View style={styles.locationFallback}>
+                <Text style={styles.locationFallbackText}>
+                  {locationLoading ? 'Detecting your current location...' : 'Current location could not be detected.'}
+                </Text>
               </View>
-              <View>
-                <Text style={styles.addressMain}>Bandra Kurla Complex</Text>
-                <Text style={styles.addressSub}>Mumbai, Maharashtra, India</Text>
-              </View>
-            </View>
+            )}
           </View>
 
           {/* Confirm Button */}
@@ -358,6 +483,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#166534',
   },
+  errorText: {
+    color: '#dc2626',
+  },
   coordRow: {
     flexDirection: 'row',
     marginBottom: 20,
@@ -384,6 +512,9 @@ const styles = StyleSheet.create({
     borderTopColor: '#f1f5f9',
     gap: 12,
   },
+  addressTextWrap: {
+    flex: 1,
+  },
   addressIcon: {
     width: 40,
     height: 40,
@@ -400,6 +531,14 @@ const styles = StyleSheet.create({
   addressSub: {
     fontSize: 12,
     color: '#94a3b8',
+  },
+  locationFallback: {
+    paddingVertical: 12,
+  },
+  locationFallbackText: {
+    fontSize: 14,
+    color: '#64748b',
+    lineHeight: 20,
   },
   confirmBtn: {
     backgroundColor: '#4f46e5',

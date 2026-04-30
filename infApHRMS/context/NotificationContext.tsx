@@ -132,6 +132,31 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
 
+  React.useEffect(() => {
+    const api = require('../constants/api').ADMIN_API_URL;
+    fetch(`${api}/notifications`).then(r => r.json()).then((json) => {
+      if (json && json.status === 'Success' && Array.isArray(json.data)) {
+        const mapped = json.data.map((n: any, i: number) => ({
+          id: n.id || n._id || String(i + 1000),
+          type: (n.category === 'announcement' ? 'system' : 'system') as NotificationType,
+          title: n.headline || n.title || 'Notification',
+          message: (n.details || '').slice(0, 120),
+          description: n.details || '',
+          time: n.scheduleAt ? new Date(n.scheduleAt).toLocaleString() : 'just now',
+          timestamp: n.createdAt || new Date().toString(),
+          isRead: false,
+          sender: n.sentBy || 'System',
+          division: 'General',
+          isOnline: true,
+        }));
+
+        if (mapped.length) setNotifications(mapped as Notification[]);
+      }
+    }).catch(() => {
+      // keep mocks on error
+    });
+  }, []);
+
   const markAsRead = (id: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))

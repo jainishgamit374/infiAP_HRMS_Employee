@@ -1,10 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const mainAdminController = require("../controllers/mainAdmin.controller");
+const { verifyJWT } = require("../middlewares/auth.middleware");
+const { verifyRole } = require("../middlewares/role.middleware");
 
-// Here you could add authentication and authorization middleware to protect these routes.
-// const { verifyJWT, verifyRole } = require("../middlewares/auth.middleware");
-// router.use(verifyJWT, verifyRole(["main_admin"]));
+// Protect all main-admin write endpoints.
+router.use(verifyJWT);
+router.use(verifyRole(["main_admin"]));
 
 // Company Setup
 router.post("/company", mainAdminController.createCompany);

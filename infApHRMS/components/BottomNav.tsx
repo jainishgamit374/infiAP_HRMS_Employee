@@ -7,8 +7,8 @@ import Animated, {
   withSpring,
   useSharedValue,
   withTiming,
-  interpolateColor
 } from 'react-native-reanimated';
+import { UI } from '@/constants/ui';
 
 const { width } = Dimensions.get('window');
 
@@ -66,7 +66,7 @@ const NavItem = ({ item, isActive }: { item: typeof NAV_ITEMS[0], isActive: bool
         <Ionicons
           name={(isActive ? item.activeIcon : item.icon) as any}
           size={24}
-          color={isActive ? '#4f46e5' : '#94a3b8'}
+          color={isActive ? UI.colors.primary : '#94a3b8'}
         />
       </Animated.View>
       <Animated.Text style={[styles.navLabel, isActive && styles.navLabelActive, animatedTextStyle]}>
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   navLabelActive: {
-    color: '#4f46e5',
+    color: UI.colors.primary,
   },
   activeIndicator: {
     position: 'absolute',
@@ -153,13 +153,12 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#4f46e5',
+    backgroundColor: UI.colors.primary,
   },
   iconGlow: {
-    shadowColor: '#4f46e5',
+    shadowColor: UI.colors.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 10,
   }
 });
-

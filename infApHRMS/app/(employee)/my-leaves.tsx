@@ -52,17 +52,9 @@ export default function MyLeaves() {
     return true;
   });
 
-  // Badge pulse animation
-  const pulse = useSharedValue(1);
-  useEffect(() => {
-    pulse.value = withRepeat(
-      withTiming(1.05, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true
-    );
-  }, []);
+  // Removed bouncy badge animation - static styling instead
   const animatedBadgeStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulse.value }],
+    // Static style - no animation
   }));
 
   // Helpers

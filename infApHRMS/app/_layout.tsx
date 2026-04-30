@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -19,8 +19,24 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (Platform.OS === 'android') {
-      // Hide the Android navigation bar and enable immersive mode
-      NavigationBar.setVisibilityAsync("hidden");
+      const setupNavigationBar = async () => {
+        // Keep Android in immersive mode and auto-hide system nav buttons.
+        await NavigationBar.setBehaviorAsync('overlay-swipe');
+        await NavigationBar.setVisibilityAsync('hidden');
+        await NavigationBar.setBackgroundColorAsync('#00000000');
+      };
+
+      setupNavigationBar();
+
+      const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+        if (nextState === 'active') {
+          setupNavigationBar();
+        }
+      });
+
+      return () => {
+        appStateSubscription.remove();
+      };
     }
   }, []);
 
@@ -32,11 +48,9 @@ export default function RootLayout() {
             <SidebarProvider>
               <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
                 <Sidebar />
-                <Stack screenOptions={{ animation: 'slide_from_right' }}>
+                <Stack>
                   <Stack.Screen name="(auth)" options={{ headerShown: false }} />
                   <Stack.Screen name="(employee)" options={{ headerShown: false }} />
-                  <Stack.Screen name="(hr)" options={{ headerShown: false }} />
-                  <Stack.Screen name="(admin)" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
                 </Stack>

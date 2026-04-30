@@ -3,24 +3,119 @@ const User = require("../models/user.model");
 const LeaveBalance = require("../models/leaveBalance.model");
 const LeaveApplication = require("../models/leaveApplication.model");
 const EmployeeOfTheMonth = require("../models/employeeOfTheMonth.model");
+const Holiday = require("../models/holiday.model");
 const moment = require("moment");
+
+const normalizeLeaveDate = (value) => {
+    if (typeof value === "string") {
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) {
+            return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        }
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+};
+
+const nextDate = (date) => {
+    const value = new Date(date);
+    value.setUTCDate(value.getUTCDate() + 1);
+    return value;
+};
+
+const mapLeaveApplication = (leave) => ({
+    LeaveApplicationMasterID: leave._id,
+    EmployeeID: leave.EmployeeID,
+    LeaveType: leave.LeaveType,
+    ApprovalStatusID: leave.ApprovalStatusID,
+    ApprovalStatus: leave.ApprovalStatus,
+    ApprovalUsername: leave.ApprovalUsername,
+    Reason: leave.Reason,
+    StartDate: leave.StartDate,
+    EndDate: leave.EndDate,
+    IsHalfDay: leave.IsHalfDay,
+    IsFirstHalf: leave.IsFirstHalf,
+    CreatedDate: leave.createdAt,
+    UpdatedDate: leave.updatedAt
+});
+
+const dedupeLeaveApplications = (leaves) => {
+    const seen = new Set();
+    return leaves.filter((leave) => {
+        const key = [
+            String(leave.EmployeeID),
+            leave.LeaveType,
+            leave.StartDate ? leave.StartDate.toISOString().split("T")[0] : "",
+            leave.EndDate ? leave.EndDate.toISOString().split("T")[0] : "",
+            leave.Reason,
+            leave.ApprovalStatus
+        ].join("|");
+
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
+
+const mapProfileUser = (user) => ({
+    id: user._id,
+    name: user.name || "",
+    email: user.email || "",
+    role: user.designation || user.role || "",
+    systemRole: user.role || "employee",
+    employeeId: user.employeeId || "",
+    department: user.department || "",
+    joiningDate: user.joiningDate
+        ? new Date(user.joiningDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "",
+    phone: user.phone || "",
+    address: user.address || "",
+    avatar: user.profileImage || "",
+});
 
 // 1. Employee Dashboard Home Data
 exports.getDashboardHome = async (req, res) => {
     try {
-        const userId = req.user ? req.user._id : "60b8d295f19c1e0015b6d5f7"; // using mock fallback if no user
-        
-        // Mocking dashboard data for now based on UI requirements
+        const userId = req.user._id;
+        const currentUser = await User.findById(userId).select("name department joiningDate");
+        const now = new Date();
+        const today = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        const joinDate = currentUser?.joiningDate
+            ? new Date(currentUser.joiningDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+            : today;
+
+        const startOfMonth = moment().startOf('month').toDate();
+        const endOfMonth = moment().endOf('month').toDate();
+        const punches = await Punch.find({
+            userId,
+            PunchType: 1,
+            PunchTime: { $gte: startOfMonth, $lte: endOfMonth }
+        });
+        const presentDays = new Set(punches.map((p) => p.PunchTime.toISOString().split('T')[0])).size;
+
+        const approvedLeaves = await LeaveApplication.countDocuments({
+            EmployeeID: userId,
+            ApprovalStatusID: 2,
+            StartDate: { $gte: startOfMonth, $lte: endOfMonth }
+        });
+
+        const holidays = await Holiday.countDocuments({
+            date: { $gte: startOfMonth, $lte: endOfMonth }
+        });
+
         const dashboardData = {
             greeting: {
-                message: "Welcome, Sneha Desai!",
-                subMessage: "Sneha Desai joined the Engineering team on Jan 20, 2026. Let's give her a warm welcome!",
+                message: `Welcome, ${currentUser?.name || "Employee"}!`,
+                subMessage: `Today is ${today}.`,
+                today,
             },
             joiningToday: [
                 {
-                    name: "Sneha Desai",
-                    role: "Engineering",
-                    joinedAt: "Jan 20, 2026"
+                    name: currentUser?.name || "Employee",
+                    role: currentUser?.department || "Department",
+                    joinedAt: joinDate
                 }
             ],
             checkInInfo: {
@@ -38,9 +133,9 @@ exports.getDashboardHome = async (req, res) => {
                 halfDay: 0
             },
             attendanceSummary: {
-                present: 22,
-                leaves: 2,
-                holiday: 1
+                present: presentDays,
+                leaves: approvedLeaves,
+                holiday: holidays
             },
             missedPunches: [
                 { date: "Mar 2, 2026", type: "Missing Out" },
@@ -66,17 +161,29 @@ exports.getDashboardHome = async (req, res) => {
 exports.empPunch = async (req, res) => {
     try {
         const { PunchType, Latitude, Longitude, IsAway, WorkMode } = req.body;
+
+        const parsedLatitude = Number(Latitude);
+        const parsedLongitude = Number(Longitude);
+
+        if (!Number.isFinite(parsedLatitude) || !Number.isFinite(parsedLongitude)) {
+            return res.status(400).json({
+                status: "Error",
+                message: "Latitude and Longitude are required for punch location."
+            });
+        }
         
         const userId = req.user ? req.user._id : "656b23d91f4a9b2b2c3d4e5f"; 
 
         const punch = await Punch.create({
             userId,
             PunchType,
-            Latitude,
-            Longitude,
+            Latitude: parsedLatitude,
+            Longitude: parsedLongitude,
             IsAway,
             WorkMode
         });
+
+        const locationLabel = `${parsedLatitude.toFixed(6)}, ${parsedLongitude.toFixed(6)}`;
 
         const formatDoubleDigit = (n) => n < 10 ? `0${n}` : n;
         const d = punch.PunchTime || new Date();
@@ -101,7 +208,12 @@ exports.empPunch = async (req, res) => {
         res.status(200).json({
             status: "Success",
             message: message,
-            PunchTime: formattedPunchTime
+            PunchTime: formattedPunchTime,
+            data: {
+                latitude: parsedLatitude,
+                longitude: parsedLongitude,
+                locationLabel
+            }
         });
 
     } catch (error) {
@@ -273,7 +385,7 @@ exports.getHalfDayCount = async (req, res) => {
 // 8. Attendance Summary
 exports.getAttendanceSummary = async (req, res) => {
     try {
-        const userId = req.user ? req.user._id : "656b23d91f4a9b2b2c3d4e5f";
+        const userId = req.user._id;
         const startOfMonth = moment().startOf('month').toDate();
         const endOfMonth = moment().endOf('month').toDate();
 
@@ -290,15 +402,18 @@ exports.getAttendanceSummary = async (req, res) => {
             ApprovalStatusID: 2, // Assume 2 = Approved
             StartDate: { $gte: startOfMonth, $lte: endOfMonth }
         });
-        const leavesCount = leavesDocs.length || 0;
+        const leavesCount = leavesDocs.length;
+        const holidays = await Holiday.countDocuments({
+            date: { $gte: startOfMonth, $lte: endOfMonth }
+        });
 
         res.status(200).json({
             status: "Success",
             statusCode: 200,
             data: {
-                present: presentDays || 22, // fallback to mock 22 if no data
-                leaves: leavesCount || 2,
-                holiday: 1 // mocked holiday count as requested
+                present: presentDays,
+                leaves: leavesCount,
+                holiday: holidays
             }
         });
     } catch (error) {
@@ -423,25 +538,54 @@ exports.getDOB = async (req, res) => {
 exports.applyLeave = async (req, res) => {
     try {
         const { LeaveType, Reason, StartDate, EndDate, IsHalfDay, IsFirstHalf } = req.body;
-        const EmployeeID = req.user ? req.user._id : "656b23d91f4a9b2b2c3d4e5f"; 
+        const EmployeeID = req.user._id; 
+        const normalizedStartDate = normalizeLeaveDate(StartDate);
+        const normalizedEndDate = normalizeLeaveDate(EndDate);
+
+        if (!LeaveType || !Reason || !normalizedStartDate || !normalizedEndDate) {
+            return res.status(400).json({ status: "Error", message: "Leave type, reason, start date, and end date are required." });
+        }
+
+        if (normalizedEndDate < normalizedStartDate) {
+            return res.status(400).json({ status: "Error", message: "End date cannot be before start date." });
+        }
+
+        const existingLeave = await LeaveApplication.findOne({
+            EmployeeID,
+            LeaveType,
+            Reason,
+            StartDate: { $gte: normalizedStartDate, $lt: nextDate(normalizedStartDate) },
+            EndDate: { $gte: normalizedEndDate, $lt: nextDate(normalizedEndDate) },
+            ApprovalStatusID: { $in: [1, 3] }
+        }).sort({ createdAt: -1 });
+
+        if (existingLeave) {
+            return res.status(200).json({
+                status: "Success",
+                message: "Leave application already exists.",
+                data: mapLeaveApplication(existingLeave)
+            });
+        }
 
         const leaveApp = new LeaveApplication({
             EmployeeID,
             LeaveType,
             Reason,
-            StartDate,
-            EndDate,
+            StartDate: normalizedStartDate,
+            EndDate: normalizedEndDate,
             IsHalfDay,
             IsFirstHalf,
             ApprovalStatusID: 3, // 3: Awaiting
-            ApprovalStatus: "Awaiting Approve"
+            ApprovalStatus: "Awaiting Approve",
+            ApprovalUsername: "Reporting Manager"
         });
 
         await leaveApp.save();
 
         res.status(200).json({
             status: "Success",
-            message: "Leave application submitted successfully."
+            message: "Leave application submitted successfully.",
+            data: mapLeaveApplication(leaveApp)
         });
     } catch (error) {
         res.status(500).json({ status: "Error", message: "Failed to apply for leave", error: error.message });
@@ -451,25 +595,11 @@ exports.applyLeave = async (req, res) => {
 // 13. Get Employee Leaves
 exports.getEmployeeLeaves = async (req, res) => {
     try {
-        const EmployeeID = req.user ? req.user._id : "656b23d91f4a9b2b2c3d4e5f"; 
+        const EmployeeID = req.user._id; 
 
         const leaves = await LeaveApplication.find({ EmployeeID }).sort({ createdAt: -1 });
         
-        const data = leaves.map(l => ({
-            LeaveApplicationMasterID: l._id,
-            EmployeeID: l.EmployeeID,
-            LeaveType: l.LeaveType,
-            ApprovalStatusID: l.ApprovalStatusID,
-            ApprovalStatus: l.ApprovalStatus,
-            ApprovalUsername: l.ApprovalUsername,
-            Reason: l.Reason,
-            StartDate: l.StartDate,
-            EndDate: l.EndDate,
-            IsHalfDay: l.IsHalfDay,
-            IsFirstHalf: l.IsFirstHalf,
-            CreatedDate: l.createdAt,
-            UpdatedDate: l.updatedAt
-        }));
+        const data = dedupeLeaveApplications(leaves).map(mapLeaveApplication);
 
         res.status(200).json({
             status: "Success",
@@ -717,6 +847,54 @@ exports.editProfile = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ status: "Error", message: "Failed to update profile", error: error.message });
+    }
+};
+
+exports.getAuthenticatedProfile = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select("-password -refreshToken");
+
+        if (!user) {
+            return res.status(404).json({ status: "Error", message: "User not found" });
+        }
+
+        return res.status(200).json({
+            status: "Success",
+            data: mapProfileUser(user),
+        });
+    } catch (error) {
+        return res.status(500).json({ status: "Error", message: "Failed to fetch profile", error: error.message });
+    }
+};
+
+exports.updateAuthenticatedProfile = async (req, res) => {
+    try {
+        const allowedFields = ["name", "phone", "address", "department", "designation", "profileImage"];
+        const updates = {};
+
+        allowedFields.forEach((field) => {
+            if (req.body[field] !== undefined) {
+                updates[field] = req.body[field];
+            }
+        });
+
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user._id,
+            { $set: updates },
+            { new: true, runValidators: true }
+        ).select("-password -refreshToken");
+
+        if (!updatedUser) {
+            return res.status(404).json({ status: "Error", message: "User not found" });
+        }
+
+        return res.status(200).json({
+            status: "Success",
+            message: "Profile updated successfully",
+            data: mapProfileUser(updatedUser),
+        });
+    } catch (error) {
+        return res.status(500).json({ status: "Error", message: "Failed to update profile", error: error.message });
     }
 };
 
@@ -1339,11 +1517,139 @@ exports.getPerformanceReviewDetailView = async (req, res) => {
     }
 };
 
+// 25. Get Attendance History with Check-in/Check-out times
+exports.getAttendanceHistory = async (req, res) => {
+    try {
+        const userId = req.user ? req.user._id : "656b23d91f4a9b2b2c3d4e5f";
+        const { month, year } = req.query;
+        
+        // Default to current month if not provided
+        let startDate, endDate;
+        if (month && year) {
+            startDate = moment(`${year}-${month}-01`, 'YYYY-MM-DD').startOf('month').toDate();
+            endDate = moment(`${year}-${month}-01`, 'YYYY-MM-DD').endOf('month').toDate();
+        } else {
+            startDate = moment().startOf('month').toDate();
+            endDate = moment().endOf('month').toDate();
+        }
 
+        // Get all punches for the month grouped by date
+        const punches = await Punch.find({
+            userId,
+            PunchTime: { $gte: startDate, $lte: endDate }
+        }).sort({ PunchTime: 1 });
 
+        // Group by date and separate check-ins and check-outs
+        const attendanceMap = {};
+        
+        punches.forEach(punch => {
+            const dateKey = punch.PunchTime.toISOString().split('T')[0];
+            
+            if (!attendanceMap[dateKey]) {
+                attendanceMap[dateKey] = {
+                    date: dateKey,
+                    checkInTime: null,
+                    checkOutTime: null,
+                    checkInPunch: null,
+                    checkOutPunch: null
+                };
+            }
 
+            if (punch.PunchType === 1) { // Check-in
+                attendanceMap[dateKey].checkInPunch = punch;
+                attendanceMap[dateKey].checkInTime = punch.PunchTime;
+            } else if (punch.PunchType === 2) { // Check-out
+                attendanceMap[dateKey].checkOutPunch = punch;
+                attendanceMap[dateKey].checkOutTime = punch.PunchTime;
+            }
+        });
 
+        // Format attendance records
+        const attendanceRecords = Object.values(attendanceMap).map(record => {
+            const date = new Date(record.date);
+            const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const month = date.toLocaleDateString('en-US', { month: 'short' });
+            const day = date.getDate();
 
+            const formatTime = (punchDate) => {
+                if (!punchDate) return null;
+                const h = punchDate.getHours();
+                const m = punchDate.getMinutes();
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const hour = h % 12 || 12;
+                return `${String(hour).padStart(2, '0')}:${String(m).padStart(2, '0')} ${ampm}`;
+            };
+
+            const checkInTime = formatTime(record.checkInTime);
+            const checkOutTime = formatTime(record.checkOutTime);
+
+            // Determine status
+            let status = 'Absent';
+            let duration = '0h 0m';
+
+            if (record.checkInTime && record.checkOutTime) {
+                status = 'Present';
+                const diffMs = record.checkOutTime - record.checkInTime;
+                const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                duration = `${diffHours}h ${diffMinutes}m`;
+                
+                // Check if late (after 10:00 AM)
+                if (record.checkInTime.getHours() > 10 || (record.checkInTime.getHours() === 10 && record.checkInTime.getMinutes() > 0)) {
+                    status = 'Late';
+                }
+            } else if (record.checkInTime && !record.checkOutTime) {
+                status = 'Pending';
+            }
+
+            return {
+                id: record.date,
+                date: dateStr,
+                month,
+                day,
+                checkInTime: checkInTime || '--:--',
+                checkOutTime: checkOutTime || '--:--',
+                status,
+                duration,
+                latitude: record.checkInPunch?.Latitude || null,
+                longitude: record.checkInPunch?.Longitude || null,
+                workMode: record.checkInPunch?.WorkMode || null
+            };
+        }).sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        // Calculate summary stats
+        const presentDays = attendanceRecords.filter(r => r.status === 'Present').length;
+        const lateDays = attendanceRecords.filter(r => r.status === 'Late').length;
+        const absentDays = attendanceRecords.filter(r => r.status === 'Absent').length;
+        const totalHours = attendanceRecords.reduce((sum, r) => {
+            if (r.status === 'Present' || r.status === 'Late') {
+                const [hours] = r.duration.split('h');
+                return sum + parseInt(hours);
+            }
+            return sum;
+        }, 0);
+
+        res.status(200).json({
+            status: "Success",
+            statusCode: 200,
+            data: {
+                records: attendanceRecords,
+                summary: {
+                    presentDays,
+                    lateDays,
+                    absentDays,
+                    totalHours
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            status: "Error", 
+            message: "Failed to get attendance history", 
+            error: error.message 
+        });
+    }
+};
 
 
 

@@ -9,29 +9,31 @@ import {
   Platform,
   ScrollView,
   Alert,
-  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const ROLES = [
-  { label: 'Employee', value: 'employee', icon: 'person-outline' },
-  { label: 'HR', value: 'hr', icon: 'people-outline' },
-  { label: 'Admin', value: 'admin', icon: 'shield-outline' },
-];
+import { useUser } from '@/context/UserContext';
+import {
+  clearPendingTwoFactorChallenge,
+  signInUser,
+  storeAuthSession,
+  storePendingTwoFactorChallenge,
+} from '../../services/auth';
 
 export default function SignIn() {
+  const { syncUserFromApi } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [selectedRole, setSelectedRole] = useState('employee');
-  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const currentRole = ROLES.find(r => r.value === selectedRole)!;
+  const handleSignIn = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
 
-  const handleSignIn = () => {
-    if (!email.trim()) {
+    if (!normalizedEmail) {
       Alert.alert('Missing Info', 'Please enter your email address.');
       return;
     }
@@ -39,8 +41,51 @@ export default function SignIn() {
       Alert.alert('Missing Info', 'Please enter your password.');
       return;
     }
-    // Navigate to 2FA screen with selected role
-    router.push({ pathname: '/(auth)/two-factor-auth', params: { role: selectedRole } });
+
+    try {
+      setIsSubmitting(true);
+      await clearPendingTwoFactorChallenge();
+      const response = await signInUser({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (response.require2FA) {
+        if (!response.userId) {
+          Alert.alert('Sign In Failed', 'The server did not return a valid verification challenge.');
+          return;
+        }
+
+        await storePendingTwoFactorChallenge({
+          email: normalizedEmail,
+          userId: response.userId,
+        });
+
+        router.replace({
+          pathname: '/(auth)/two-factor-auth',
+          params: { email: normalizedEmail },
+        });
+        return;
+      }
+
+      if (!response.token || !response.user || !response.role) {
+        Alert.alert('Sign In Failed', 'The server did not return a valid login session.');
+        return;
+      }
+
+      await storeAuthSession({
+        token: response.token,
+        role: response.role,
+        user: response.user,
+      });
+
+      syncUserFromApi(response.user);
+      router.replace('/(employee)' as any);
+    } catch (error) {
+      Alert.alert('Sign In Failed', error instanceof Error ? error.message : 'Unable to sign in right now.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -57,50 +102,6 @@ export default function SignIn() {
             <Text style={styles.subtitle}>
               Enter your credentials to access your{'\n'}enterprise dashboard
             </Text>
-
-            {/* Role Selector */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Sign in as</Text>
-              <TouchableOpacity
-                style={styles.roleSelector}
-                onPress={() => setShowRoleDropdown(!showRoleDropdown)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.roleSelectorLeft}>
-                  <Ionicons name={currentRole.icon as any} size={20} color="#5a55d2" />
-                  <Text style={styles.roleSelectorText}>{currentRole.label}</Text>
-                </View>
-                <Ionicons name={showRoleDropdown ? "chevron-up" : "chevron-down"} size={20} color="#9ca3af" />
-              </TouchableOpacity>
-              
-              {showRoleDropdown && (
-                <View style={styles.roleDropdown}>
-                  {ROLES.map((role) => (
-                    <TouchableOpacity
-                      key={role.value}
-                      style={[
-                        styles.roleOption,
-                        selectedRole === role.value && styles.roleOptionActive,
-                      ]}
-                      onPress={() => {
-                        setSelectedRole(role.value);
-                        setShowRoleDropdown(false);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name={role.icon as any} size={18} color={selectedRole === role.value ? '#5a55d2' : '#6b7280'} />
-                      <Text style={[
-                        styles.roleOptionText,
-                        selectedRole === role.value && styles.roleOptionTextActive,
-                      ]}>{role.label}</Text>
-                      {selectedRole === role.value && (
-                        <Ionicons name="checkmark" size={18} color="#5a55d2" style={{ marginLeft: 'auto' }} />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
 
             {/* Email */}
             <View style={styles.inputGroup}>
@@ -137,8 +138,11 @@ export default function SignIn() {
                   placeholderTextColor="#9ca3af"
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                 />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#9ca3af" />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -151,21 +155,30 @@ export default function SignIn() {
               <Ionicons
                 name={rememberMe ? "checkbox" : "square-outline"}
                 size={20}
-                color={rememberMe ? "#5a55d2" : "#9ca3af"}
+                color={rememberMe ? "#007AFF" : "#9ca3af"}
               />
               <Text style={styles.rememberMeText}>Remember me</Text>
             </TouchableOpacity>
 
             {/* Sign In Button */}
-            <TouchableOpacity style={styles.signInButton} onPress={handleSignIn} activeOpacity={0.8}>
-              <Text style={styles.signInText}>Sign In</Text>
+            <TouchableOpacity
+              style={[styles.signInButton, isSubmitting && styles.signInButtonDisabled]}
+              onPress={handleSignIn}
+              activeOpacity={0.8}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.signInText}>Sign In</Text>
+              )}
             </TouchableOpacity>
 
             <View style={{ height: 20 }} />
 
             {/* Footer Card Section */}
             <View style={styles.cardFooter}>
-              <Text style={styles.noAccountText}>Don't have an account? </Text>
+              <Text style={styles.noAccountText}>Don’t have an account? </Text>
               <Link href="/(auth)/sign-up" asChild>
                 <TouchableOpacity>
                   <Text style={styles.createAccountText}>Create an account</Text>
@@ -224,7 +237,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   title: {
-    fontSize: 28,
+    fontSize: 15,
     fontWeight: '700',
     color: '#111827',
     textAlign: 'center',
@@ -253,7 +266,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 2,
-    borderColor: '#5a55d2',
+    borderColor: '#007AFF',
     borderRadius: 12,
     backgroundColor: '#f8f7ff',
     height: 52,
@@ -267,7 +280,7 @@ const styles = StyleSheet.create({
   roleSelectorText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#5a55d2',
+    color: '#007AFF',
   },
   roleDropdown: {
     backgroundColor: '#fff',
@@ -300,7 +313,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   roleOptionTextActive: {
-    color: '#5a55d2',
+    color: '#007AFF',
     fontWeight: '600',
   },
   passwordHeader: {
@@ -311,7 +324,7 @@ const styles = StyleSheet.create({
   },
   forgotPassword: {
     fontSize: 14,
-    color: '#5a55d2',
+    color: '#007AFF',
     fontWeight: '500',
   },
   inputContainer: {
@@ -344,17 +357,20 @@ const styles = StyleSheet.create({
     color: '#4b5563',
   },
   signInButton: {
-    backgroundColor: '#5a55d2',
+    backgroundColor: '#007AFF',
     borderRadius: 12,
     height: 52,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#5a55d2',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
     marginBottom: 24,
+  },
+  signInButtonDisabled: {
+    opacity: 0.75,
   },
   signInText: {
     color: '#ffffff',
@@ -417,7 +433,7 @@ const styles = StyleSheet.create({
   createAccountText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#5a55d2',
+    color: '#007AFF',
   },
   badgesContainer: {
     flexDirection: 'row',

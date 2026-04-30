@@ -18,14 +18,17 @@ export default function ApplyLeave() {
   const [leaveType, setLeaveType] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [dateMode, setDateMode] = useState<'single' | 'range'>('single');
   const [reason, setReason] = useState('');
   const [notifyManager, setNotifyManager] = useState(true);
   const [isTypeModalVisible, setIsTypeModalVisible] = useState(false);
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [calendarTarget, setCalendarTarget] = useState<'start' | 'end'>('start');
   const [isSuccessVisible, setIsSuccessVisible] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(0); // 0 = current month, 1 = next month
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [successInfo, setSuccessInfo] = useState({
-    title: 'Leave Applied Successfully ✅',
+    title: 'Leave Applied Successfully',
     sub: 'Your request has been sent for approval.'
   });
 
@@ -41,12 +44,12 @@ export default function ApplyLeave() {
     { label: 'Maternity/Paternity Leave', icon: 'heart-outline', color: '#ec4899' },
   ];
 
-  // Simple Month Days Generator
-  const generateMonthDays = () => {
+  // Generate month days for current or next month
+  const generateMonthDays = (monthOffset: number = 0) => {
     const days = [];
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth();
+    const month = now.getMonth() + monthOffset;
     const firstDay = new Date(year, month, 1).getDay();
     const lastDate = new Date(year, month + 1, 0).getDate();
 
@@ -58,18 +61,44 @@ export default function ApplyLeave() {
     return days;
   };
 
-  const monthDays = generateMonthDays();
+  const getMonthYear = (monthOffset: number = 0) => {
+    const now = new Date();
+    const date = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    const monthName = date.toLocaleString('en-US', { month: 'long' }).toUpperCase();
+    const year = date.getFullYear();
+    return `${monthName} ${year}`;
+  };
 
-  const handleSubmit = () => {
+  const monthDays = generateMonthDays(calendarMonth);
+
+  const handleDateSelect = (dateString: string) => {
+    if (calendarTarget === 'start') {
+      setStartDate(dateString);
+
+      if (dateMode === 'single' || !endDate || new Date(endDate) < new Date(dateString)) {
+        setEndDate(dateString);
+      }
+    } else {
+      setEndDate(dateString);
+    }
+
+    setIsCalendarVisible(false);
+  };
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     // Step 6: System Validation (from Flowchart)
-    if (!leaveType || !startDate || !endDate || !reason) {
+    const finalEndDate = dateMode === 'single' ? startDate : endDate;
+
+    if (!leaveType || !startDate || !finalEndDate || !reason) {
       alert('Please fill in all required fields');
       return;
     }
 
     // Date conflict/Validation
     const start = new Date(startDate);
-    const end = new Date(endDate);
+    const end = new Date(finalEndDate);
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       alert('Please enter valid dates (YYYY-MM-DD)');
       return;
@@ -89,16 +118,24 @@ export default function ApplyLeave() {
     }
     
     // Step 5: Submit Request
-    applyLeave({
-      type: leaveType,
-      startDate,
-      endDate,
-      reason,
-    });
+    try {
+      setIsSubmitting(true);
+
+      await applyLeave({
+        type: leaveType,
+        startDate,
+        endDate: finalEndDate,
+        reason,
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to submit leave request');
+      setIsSubmitting(false);
+      return;
+    }
     
     // Show Success Modal with Animation
     setSuccessInfo({
-      title: 'Leave Applied Successfully ✅',
+      title: 'Leave Applied Successfully',
       sub: 'Your request has been sent for approval.'
     });
     setIsSuccessVisible(true);
@@ -111,7 +148,7 @@ export default function ApplyLeave() {
     }, 2000);
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     // Partial validation for draft
     if (!leaveType && !startDate && !endDate) {
       alert('Please select at least a leave type or date to save a draft');
@@ -119,7 +156,7 @@ export default function ApplyLeave() {
     }
 
     // Step 5: Save as Draft
-    applyLeave({
+    await applyLeave({
       type: leaveType || 'Unspecified Leave',
       startDate: startDate || 'Not set',
       endDate: endDate || 'Not set',
@@ -128,7 +165,7 @@ export default function ApplyLeave() {
     
     // Show Success Modal with Animation
     setSuccessInfo({
-      title: 'Draft Saved Successfully 💾',
+      title: 'Draft Saved Successfully',
       sub: 'You can find this in your Drafts tab.'
     });
     setIsSuccessVisible(true);
@@ -185,13 +222,14 @@ export default function ApplyLeave() {
             </TouchableOpacity>
 
             <View style={styles.row}>
-              <View style={styles.halfWidth}>
+              <View style={dateMode === 'single' ? styles.fullWidth : styles.halfWidth}>
                 <Text style={styles.label}>Start Date</Text>
                 <TouchableOpacity 
                   style={styles.inputWrap} 
                   activeOpacity={0.7}
                   onPress={() => {
                     setCalendarTarget('start');
+                    setCalendarMonth(0);
                     setIsCalendarVisible(true);
                   }}
                 >
@@ -201,22 +239,47 @@ export default function ApplyLeave() {
                   <Ionicons name="calendar-outline" size={18} color="#64748b" style={styles.inputIcon} />
                 </TouchableOpacity>
               </View>
-              <View style={styles.halfWidth}>
-                <Text style={styles.label}>End Date</Text>
-                <TouchableOpacity 
-                  style={styles.inputWrap} 
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    setCalendarTarget('end');
-                    setIsCalendarVisible(true);
-                  }}
-                >
-                  <Text style={endDate ? styles.inputText : styles.placeholderText}>
-                    {endDate || 'YYYY-MM-DD'}
-                  </Text>
-                  <Ionicons name="calendar-outline" size={18} color="#64748b" style={styles.inputIcon} />
-                </TouchableOpacity>
-              </View>
+              {dateMode === 'range' && (
+                <View style={styles.halfWidth}>
+                  <Text style={styles.label}>End Date</Text>
+                  <TouchableOpacity 
+                    style={styles.inputWrap} 
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setCalendarTarget('end');
+                      setCalendarMonth(0);
+                      setIsCalendarVisible(true);
+                    }}
+                  >
+                    <Text style={endDate ? styles.inputText : styles.placeholderText}>
+                      {endDate || 'YYYY-MM-DD'}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={18} color="#64748b" style={styles.inputIcon} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.dateModeWrap}>
+              <TouchableOpacity
+                style={[styles.dateModeButton, dateMode === 'single' && styles.dateModeButtonActive]}
+                activeOpacity={0.75}
+                onPress={() => {
+                  setDateMode('single');
+                  if (startDate) setEndDate(startDate);
+                }}
+              >
+                <Ionicons name="today-outline" size={16} color={dateMode === 'single' ? '#fff' : '#64748b'} />
+                <Text style={[styles.dateModeText, dateMode === 'single' && styles.dateModeTextActive]}>Single day</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dateModeButton, dateMode === 'range' && styles.dateModeButtonActive]}
+                activeOpacity={0.75}
+                onPress={() => setDateMode('range')}
+              >
+                <Ionicons name="calendar-outline" size={16} color={dateMode === 'range' ? '#fff' : '#64748b'} />
+                <Text style={[styles.dateModeText, dateMode === 'range' && styles.dateModeTextActive]}>Multiple days</Text>
+              </TouchableOpacity>
             </View>
 
             <Text style={styles.label}>Reason for Leave</Text>
@@ -260,9 +323,14 @@ export default function ApplyLeave() {
           </View>
 
           {/* Action Buttons */}
-          <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
+            onPress={handleSubmit}
+            activeOpacity={0.8}
+            disabled={isSubmitting}
+          >
               <Ionicons name="send" size={18} color="#fff" />
-              <Text style={styles.submitBtnText}>Submit Application</Text>
+              <Text style={styles.submitBtnText}>{isSubmitting ? 'Submitting...' : 'Submit Application'}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.draftBtn} onPress={handleSaveDraft} activeOpacity={0.7}>
@@ -337,44 +405,65 @@ export default function ApplyLeave() {
             activeOpacity={1} 
             onPress={() => setIsCalendarVisible(false)}
           >
-            <View style={[styles.modalContent, { minHeight: '40%' }]}>
+            <View style={styles.calendarModalContent}>
               <View style={styles.modalHeader}>
                 <View style={styles.modalHandle} />
-                <Text style={styles.modalTitle}>Select {calendarTarget === 'start' ? 'Start' : 'End'} Date</Text>
+                <Text style={styles.modalTitle}>Select {dateMode === 'single' ? 'Leave' : calendarTarget === 'start' ? 'Start' : 'End'} Date</Text>
               </View>
               
               <View style={styles.calendarContainer}>
                 <View style={styles.calendarMonthHeader}>
-                   <Text style={styles.calendarMonthText}>MARCH 2026</Text>
+                   <TouchableOpacity 
+                     onPress={() => setCalendarMonth(0)}
+                     style={[styles.monthTab, calendarMonth === 0 && styles.monthTabActive]}
+                   >
+                     <Text style={[styles.calendarMonthText, calendarMonth === 0 && styles.monthTabTextActive]}>
+                       {getMonthYear(0)}
+                     </Text>
+                   </TouchableOpacity>
+                   <TouchableOpacity 
+                     onPress={() => setCalendarMonth(1)}
+                     style={[styles.monthTab, calendarMonth === 1 && styles.monthTabActive]}
+                   >
+                     <Text style={[styles.calendarMonthText, calendarMonth === 1 && styles.monthTabTextActive]}>
+                       {getMonthYear(1)}
+                     </Text>
+                   </TouchableOpacity>
                 </View>
                 <View style={styles.calendarWeekRow}>
                    {['S','M','T','W','T','F','S'].map(d => <Text key={d} style={styles.weekDayText}>{d}</Text>)}
                 </View>
                 <View style={styles.calendarGrid}>
-                  {monthDays.map((day, idx) => (
-                    <TouchableOpacity 
-                      key={idx} 
-                      style={[
-                        styles.calendarDay,
-                        day === 24 && styles.calendarDayActive
-                      ]}
-                      disabled={!day}
-                      onPress={() => {
-                        if (day) {
-                          const formatted = `2026-03-${day.toString().padStart(2, '0')}`;
-                          if (calendarTarget === 'start') setStartDate(formatted);
-                          else setEndDate(formatted);
-                          setIsCalendarVisible(false);
-                        }
-                      }}
-                    >
-                      <Text style={[
-                         styles.calendarDayText,
-                         !day && styles.calendarDayDisabled,
-                         day === 24 && styles.calendarDayActiveText
-                      ]}>{day}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {monthDays.map((day, idx) => {
+                    const now = new Date();
+                    const currentDate = new Date(now.getFullYear(), now.getMonth() + calendarMonth, day || 1);
+                    const dateString = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day || 1).padStart(2, '0')}`;
+                    const isToday = !!day && new Date(now.getFullYear(), now.getMonth() + calendarMonth, day).toDateString() === new Date().toDateString();
+                    
+                    return (
+                      <TouchableOpacity 
+                        key={idx} 
+                        style={[
+                          styles.calendarDay,
+                          startDate === dateString && styles.calendarDayActive,
+                          endDate === dateString && styles.calendarDayActive
+                        ]}
+                        disabled={!day}
+                        onPress={() => {
+                          if (day) {
+                            handleDateSelect(dateString);
+                          }
+                        }}
+                      >
+                        <Text style={[
+                           styles.calendarDayText,
+                           !day && styles.calendarDayDisabled,
+                           isToday && styles.calendarDayToday,
+                           (startDate === dateString || endDate === dateString) && styles.calendarDayActiveText
+                        ]}>{day}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             </View>
@@ -480,6 +569,9 @@ const styles = StyleSheet.create({
   halfWidth: {
     width: '48%',
   },
+  fullWidth: {
+    width: '100%',
+  },
   inputWrap: {
     backgroundColor: '#f8fafc',
     borderWidth: 1,
@@ -578,6 +670,36 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontWeight: '600',
   },
+  submitBtnDisabled: {
+    opacity: 0.65,
+  },
+  dateModeWrap: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 14,
+    padding: 4,
+    marginTop: 14,
+  },
+  dateModeButton: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateModeButtonActive: {
+    backgroundColor: '#4f39f6',
+  },
+  dateModeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+    marginLeft: 6,
+  },
+  dateModeTextActive: {
+    color: '#fff',
+  },
 
   // Modal Styles
   modalOverlay: {
@@ -591,6 +713,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     minHeight: '50%',
     maxHeight: '80%',
+  },
+  calendarModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 8,
   },
   modalHeader: {
     alignItems: 'center',
@@ -643,56 +771,94 @@ const styles = StyleSheet.create({
 
   // Calendar Styles
   calendarContainer: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 24,
   },
   calendarMonthHeader: {
-    alignItems: 'center',
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
+    padding: 4,
     marginBottom: 20,
+    gap: 0,
+  },
+  monthTab: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthTabActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   calendarMonthText: {
-    fontSize: 16,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 0,
+  },
+  monthTabTextActive: {
+    color: '#4f39f6',
     fontWeight: '800',
-    color: '#1e293b',
-    letterSpacing: 1,
   },
   calendarWeekRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
   weekDayText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#94a3b8',
-    width: 32,
+    width: '14.28%',
     textAlign: 'center',
   },
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
   },
   calendarDay: {
-    width: 40,
-    height: 40,
+    width: '14.28%',
+    aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
-    borderRadius: 20,
+    marginBottom: 6,
+    borderRadius: 999,
   },
   calendarDayActive: {
     backgroundColor: '#4f39f6',
+    shadowColor: '#4f39f6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   calendarDayText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
     color: '#475569',
   },
   calendarDayActiveText: {
     color: '#fff',
+    fontWeight: '700',
   },
   calendarDayDisabled: {
     color: '#e2e8f0',
+  },
+  calendarDayToday: {
+    color: '#4f39f6',
+    fontWeight: '800',
   },
   inputIcon: {
     position: 'absolute',

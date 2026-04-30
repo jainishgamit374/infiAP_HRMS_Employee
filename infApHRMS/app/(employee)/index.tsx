@@ -1,21 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, Dimensions } from 'react-native';
-
-const { width } = Dimensions.get('window');
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
 import { useNotifications } from '../../context/NotificationContext';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS, withTiming, withDelay, FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS, withTiming, FadeInDown } from 'react-native-reanimated';
 import Header from '../../components/layout/Header';
-import { useUser } from '../../context/UserContext';
-
-// Helper for dates
-const TODAY = new Date();
-const FORMAT_DATE = (d: Date) =>
-  d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+import { useAttendanceSession } from '../../hooks/useAttendanceSession';
+import { useUser } from '@/context/UserContext';
+import { fetchAttendanceSummary, fetchDashboardHome, submitEmployeePunch } from '@/services/auth';
+import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
+const { width } = Dimensions.get('window');
 
 // Mock SVGs / Images using Ionicons and Views
 const CircularProgress = ({ value, total, color, label, subLabel }: { value: number, total: number, color: string, label: string, subLabel: string }) => {
@@ -45,30 +41,67 @@ const SwipeToCheckIn = () => {
   const MAX_TRANSLATE = SWIPE_WIDTH - KNOB_SIZE - 8;
 
   const translateX = useSharedValue(0);
-  const [isCheckedIn, setIsCheckedIn] = useState(false);
-  const [time, setTime] = useState('09:02 AM');
+  const { session, loading, recordCheckIn, recordCheckOut, resetSession, canCheckOut, isLockedForToday, nextResetLabel } = useAttendanceSession();
+  const [isCapturingLocation, setIsCapturingLocation] = useState(false);
+  const [locationError, setLocationError] = useState('');
 
-  const handleToggle = () => {
-    const newStatus = !isCheckedIn;
-    setIsCheckedIn(newStatus);
-    const now = new Date();
-    setTime(now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
-    // Reset knob after short delay
-    setTimeout(() => {
+  const resolveCurrentLocation = async () => getExactCurrentLocation();
+
+  const handleToggle = async () => {
+    if (loading || isCapturingLocation || isLockedForToday) {
       translateX.value = withTiming(0);
-    }, 500);
+      return;
+    }
+
+    const now = new Date();
+    const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    setIsCapturingLocation(true);
+    setLocationError('');
+
+    try {
+      const location = await resolveCurrentLocation();
+      const snapshot = {
+        time,
+        location: formatExactLocationLabel(location),
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+
+      await submitEmployeePunch({
+        PunchType: canCheckOut ? 2 : 1,
+        Latitude: location.latitude,
+        Longitude: location.longitude,
+        WorkMode: 1,
+      });
+
+      if (canCheckOut) {
+        await recordCheckOut(snapshot);
+      } else {
+        await recordCheckIn(snapshot);
+      }
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : 'Unable to fetch current location');
+      translateX.value = withTiming(0);
+    } finally {
+      setIsCapturingLocation(false);
+      setTimeout(() => {
+        translateX.value = withTiming(0);
+      }, 500);
+    }
   };
 
   const panGesture = Gesture.Pan()
+    .enabled(!loading && !isCapturingLocation && !isLockedForToday)
     .onUpdate((event) => {
       translateX.value = Math.max(0, Math.min(event.translationX, MAX_TRANSLATE));
     })
     .onEnd(() => {
       if (translateX.value > MAX_TRANSLATE * 0.8) {
-        translateX.value = withSpring(MAX_TRANSLATE);
+        translateX.value = withSpring(MAX_TRANSLATE, { damping: 10, mass: 1, overshootClamping: false });
         runOnJS(handleToggle)();
       } else {
-        translateX.value = withSpring(0);
+        translateX.value = withSpring(0, { damping: 10, mass: 1, overshootClamping: false });
       }
     });
 
@@ -80,31 +113,83 @@ const SwipeToCheckIn = () => {
     opacity: 1 - translateX.value / (MAX_TRANSLATE * 0.5),
   }));
 
+  const activeSnapshot = session.checkedOut
+    ? session.checkOutSnapshot ?? session.checkInSnapshot
+    : session.checkedIn
+      ? session.checkInSnapshot
+      : null;
+  const timeLabel = session.checkedOut ? 'Checked out at' : session.checkedIn ? 'Checked in at' : 'Last check';
+  const timeValue = session.checkedOut
+    ? session.checkOutSnapshot?.time ?? '--'
+    : session.checkedIn
+      ? session.checkInSnapshot?.time ?? '--'
+      : session.checkInSnapshot?.time ?? '--';
+  const locationLabel = isCapturingLocation
+    ? 'Fetching current location...'
+    : locationError || activeSnapshot?.location || (loading ? 'Loading attendance session...' : 'Current location will appear here');
+  const hasLocationIssue = !isCapturingLocation && Boolean(locationError);
+  const swipeTitle = loading
+    ? 'LOADING SESSION...'
+    : isCapturingLocation
+      ? 'CAPTURING LOCATION...'
+      : isLockedForToday
+        ? 'CHECK-OUT COMPLETE'
+        : canCheckOut
+          ? 'SWIPE TO CHECK-OUT'
+          : 'SWIPE TO CHECK-IN';
+  const swipeHelpText = session.checkedIn && !isLockedForToday
+      ? 'Today is active until you check out'
+      : `Daily attendance resets at ${nextResetLabel}`;
+
   return (
     <View style={styles.swipeContainer}>
       <GestureDetector gesture={panGesture}>
-        <View style={[styles.swipeTrack, isCheckedIn && styles.swipeTrackSuccess]}>
+        <View style={[styles.swipeTrack, session.checkedIn && styles.swipeTrackSuccess, isLockedForToday && styles.swipeTrackLocked]}>
           <Animated.View style={[styles.swipeTextContainer, animatedTextStyle]}>
-            <Text style={[styles.swipeText, isCheckedIn && { color: '#059669', marginLeft: 10 }]}>
-              {isCheckedIn ? 'SWIPE TO CHECK-OUT' : 'SWIPE TO CHECK-IN'}
+            <Text style={[styles.swipeText, session.checkedIn && { color: '#059669', marginLeft: 10 }, isLockedForToday && styles.swipeTextLocked]}>
+              {swipeTitle}
             </Text>
           </Animated.View>
-          <Animated.View style={[styles.swipeKnob, animatedKnobStyle, isCheckedIn && styles.swipeKnobSuccess]}>
-            <Ionicons name={isCheckedIn ? "log-out-outline" : "log-in-outline"} size={22} color="#fff" />
+          <Animated.View style={[styles.swipeKnob, animatedKnobStyle, session.checkedIn && styles.swipeKnobSuccess, isLockedForToday && styles.swipeKnobLocked]}>
+            {isCapturingLocation ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : isLockedForToday ? (
+              <Ionicons name="lock-closed-outline" size={22} color="#fff" />
+            ) : (
+              <Ionicons name={canCheckOut ? "log-out-outline" : "log-in-outline"} size={22} color="#fff" />
+            )}
           </Animated.View>
         </View>
       </GestureDetector>
 
       <View style={styles.swipeFooter}>
         <View style={styles.footerItem}>
-          <Ionicons name="time-outline" size={14} color={isCheckedIn ? "#059669" : "#22c55e"} />
-          <Text style={styles.footerText}>{isCheckedIn ? 'Checked in at' : 'Last check'}: {time}</Text>
+          <Ionicons name="time-outline" size={14} color={session.checkedIn ? "#059669" : "#22c55e"} />
+          <Text style={styles.footerText}>{timeLabel}: {timeValue}</Text>
         </View>
         <View style={styles.footerItem}>
-          <Ionicons name="location-outline" size={14} color="#3b82f6" />
-          <Text style={styles.footerText}>Mumbai Office</Text>
+          <Ionicons name="location-outline" size={14} color={hasLocationIssue ? "#dc2626" : "#3b82f6"} />
+          <Text
+            style={[styles.footerText, hasLocationIssue && styles.footerTextError]}
+            numberOfLines={2}
+          >
+            {locationLabel}
+          </Text>
         </View>
       </View>
+      {!isLockedForToday && (
+        <Text style={styles.swipeNote}>{swipeHelpText}</Text>
+      )}
+      {isLockedForToday && (
+        <TouchableOpacity
+          style={styles.resetButton}
+          onPress={resetSession}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="refresh-outline" size={16} color="#fff" />
+          <Text style={styles.resetButtonText}>Reset Check-In</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -118,15 +203,15 @@ const FeatureCard = ({ icon, title, sub, color, bgColor, route, delay, unreadCou
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.95);
+    scale.value = withSpring(0.95, { damping: 10, mass: 1 });
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1);
+    scale.value = withSpring(1, { damping: 10, mass: 1 });
   };
 
   return (
-    <Animated.View entering={FadeInDown.delay(delay).springify()} style={animatedStyle}>
+    <Animated.View entering={FadeInDown.duration(300).springify()} style={animatedStyle}>
       <TouchableOpacity
         style={[styles.featureCard, { backgroundColor: bgColor }]}
         onPress={() => router.push(route as any)}
@@ -151,9 +236,14 @@ const FeatureCard = ({ icon, title, sub, color, bgColor, route, delay, unreadCou
 
 
 export default function EmployeeDashboard() {
-  const { user } = useUser();
   const { notifications } = useNotifications();
+  const { user } = useUser();
   const unreadCount = notifications.filter(n => !n.isRead).length;
+  const defaultToday = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const [welcomeTitle, setWelcomeTitle] = useState(`Welcome, ${user.name || 'Employee'}!`);
+  const [welcomeSubTitle, setWelcomeSubTitle] = useState(`Today is ${defaultToday}.`);
+  const [welcomeDate, setWelcomeDate] = useState(defaultToday.toUpperCase());
+  const [attendanceSummary, setAttendanceSummary] = useState({ present: 0, leaves: 0, holiday: 0 });
 
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollIndex = useRef(0);
@@ -174,6 +264,40 @@ export default function EmployeeDashboard() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const hydrateDashboard = async () => {
+      try {
+        const homeResponse = await fetchDashboardHome();
+        const greeting = homeResponse.data.greeting;
+        if (greeting?.message) {
+          setWelcomeTitle(greeting.message);
+        }
+        if (greeting?.subMessage) {
+          setWelcomeSubTitle(greeting.subMessage);
+        }
+        if (greeting?.today) {
+          setWelcomeDate(greeting.today.toUpperCase());
+        }
+      } catch (error) {
+        setWelcomeTitle(`Welcome, ${user.name || 'Employee'}!`);
+        setWelcomeSubTitle(`Today is ${defaultToday}.`);
+      }
+
+      try {
+        const summaryResponse = await fetchAttendanceSummary();
+        setAttendanceSummary({
+          present: summaryResponse.data.present || 0,
+          leaves: summaryResponse.data.leaves || 0,
+          holiday: summaryResponse.data.holiday || 0,
+        });
+      } catch (error) {
+        setAttendanceSummary({ present: 0, leaves: 0, holiday: 0 });
+      }
+    };
+
+    hydrateDashboard();
+  }, [defaultToday, user.name]);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.root}>
@@ -190,12 +314,10 @@ export default function EmployeeDashboard() {
             {/* Welcome Banner */}
             <View style={styles.bannerContainer}>
               <View style={styles.bannerBadge}>
-                <Text style={styles.bannerBadgeText}>JAN 28, 2026</Text>
+                <Text style={styles.bannerBadgeText}>{welcomeDate}</Text>
               </View>
-              <Text style={styles.bannerTitle}>Welcome, Sneha Desai!</Text>
-              <Text style={styles.bannerSubtitle}>
-                Sneha Desai joined the Engineering team on Jan 20, 2026. Let's give her a warm welcome!
-              </Text>
+              <Text style={styles.bannerTitle}>{welcomeTitle}</Text>
+              <Text style={styles.bannerSubtitle}>{welcomeSubTitle}</Text>
               <TouchableOpacity style={styles.sendWelcomeBtn}>
                 <Text style={styles.sendWelcomeText}>Send Welcome </Text>
                 <Ionicons name="paper-plane" size={12} color="#2e4ce6" />
@@ -261,21 +383,21 @@ export default function EmployeeDashboard() {
                 <View style={[styles.attIconWrap, { backgroundColor: '#dcfce7' }]}>
                   <Ionicons name="person-circle" size={24} color="#22c55e" />
                 </View>
-                <Text style={styles.attNumber}>22</Text>
+                <Text style={styles.attNumber}>{attendanceSummary.present}</Text>
                 <Text style={styles.attLabel}>PRESENT</Text>
               </View>
               <View style={styles.attendanceItem}>
                 <View style={[styles.attIconWrap, { backgroundColor: '#fee2e2' }]}>
                   <Ionicons name="calendar" size={20} color="#ef4444" />
                 </View>
-                <Text style={styles.attNumber}>2</Text>
+                <Text style={styles.attNumber}>{attendanceSummary.leaves}</Text>
                 <Text style={styles.attLabel}>LEAVES</Text>
               </View>
               <View style={styles.attendanceItem}>
                 <View style={[styles.attIconWrap, { backgroundColor: '#dbeafe' }]}>
                   <Ionicons name="umbrella" size={20} color="#3b82f6" />
                 </View>
-                <Text style={styles.attNumber}>1</Text>
+                <Text style={styles.attNumber}>{attendanceSummary.holiday}</Text>
                 <Text style={styles.attLabel}>HOLIDAY</Text>
               </View>
             </View>
@@ -567,6 +689,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#dcfce7',
     borderColor: '#bbf7d0',
   },
+  swipeTrackLocked: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
+  },
   swipeKnob: {
     width: 48,
     height: 48,
@@ -586,6 +712,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#22c55e',
     shadowColor: '#22c55e',
   },
+  swipeKnobLocked: {
+    backgroundColor: '#2563eb',
+    shadowColor: '#2563eb',
+  },
   swipeTextContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -598,21 +728,58 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginLeft: 30, // Offset for the knob
   },
+  swipeTextLocked: {
+    color: '#2563eb',
+    marginLeft: 10,
+  },
   swipeFooter: {
     flexDirection: 'row',
     width: '100%',
-    justifyContent: 'center',
-    gap: 24,
+    justifyContent: 'space-between',
+    gap: 16,
+    flexWrap: 'wrap',
   },
   footerItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
+    flex: 1,
+    minWidth: '45%',
   },
   footerText: {
     color: '#64748b',
     fontSize: 12,
     fontWeight: '500',
+    flex: 1,
+  },
+  footerTextError: {
+    color: '#dc2626',
+  },
+  swipeNote: {
+    marginTop: 12,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  swipeNoteLocked: {
+    color: '#2563eb',
+  },
+  resetButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#dc2626',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  resetButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   // Leave Balance Grid

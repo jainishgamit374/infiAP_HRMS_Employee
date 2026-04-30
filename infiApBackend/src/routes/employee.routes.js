@@ -1,16 +1,20 @@
 const express = require("express");
 const router = express.Router();
 const employeeController = require("../controllers/employee.controller");
+const { verifyJWT } = require("../middlewares/auth.middleware");
 
 // Optionally use JWT middleware here to protect these routes
 // const { verifyJWT } = require("../middlewares/auth.middleware");
 // router.use(verifyJWT);
 
 // Employee Dashboard Home Data
-router.get("/dashboard/home", employeeController.getDashboardHome);
+router.get("/dashboard/home", verifyJWT, employeeController.getDashboardHome);
 
 // Employee Punch (IN / OUT)
 router.post("/emp-punch", employeeController.empPunch);
+
+// Get Attendance History with Check-in/Check-out times
+router.get("/attendance-history", employeeController.getAttendanceHistory);
 
 // Get User recent Punch Status
 router.get("/punch-status", employeeController.getPunchStatus);
@@ -28,7 +32,7 @@ router.get("/early-checkout-count", employeeController.getEarlyCheckoutCount);
 router.get("/Half_Day-count", employeeController.getHalfDayCount);
 
 // Attendance Summary
-router.get("/attendance-summary", employeeController.getAttendanceSummary);
+router.get("/attendance-summary", verifyJWT, employeeController.getAttendanceSummary);
 
 // Missed Punches
 router.get("/missed-punches", employeeController.getMissedPunches);
@@ -40,8 +44,8 @@ router.get("/getemployeeofthemonth", employeeController.getEmployeeOfTheMonth);
 router.get("/getDOB", employeeController.getDOB);
 
 // Leave Applications route
-router.post("/leaveapplications", employeeController.applyLeave);
-router.get("/leaveapplications", employeeController.getEmployeeLeaves);
+router.post("/leaveapplications", verifyJWT, employeeController.applyLeave);
+router.get("/leaveapplications", verifyJWT, employeeController.getEmployeeLeaves);
 
 // Pending approvals route
 router.get("/leaveapprovals", employeeController.getPendingApprovals);
@@ -75,6 +79,8 @@ router.get("/profile/notifications", employeeController.getNotificationSettings)
 
 // Edit Personal Profile
 router.post("/profile/edit", employeeController.editProfile);
+router.get("/profile/me", verifyJWT, employeeController.getAuthenticatedProfile);
+router.patch("/profile/me", verifyJWT, employeeController.updateAuthenticatedProfile);
 
 // Attendance Granular APIs (Reusable - POST for GET)
 router.post("/attendance/stats", employeeController.getAttendanceStats);

@@ -1,37 +1,36 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, Platform, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '../../context/UserContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import {
+  clearPendingTwoFactorChallenge,
+  getPendingTwoFactorChallenge,
+  resendTwoFactorCode,
+  storePendingTwoFactorChallenge,
+  storeAuthSession,
+  verifyTwoFactorCode,
+} from '../../services/auth';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-const ROLE_DASHBOARD_MAP: Record<string, string> = {
-  employee: '/(employee)/',
-  hr: '/(hr)/',
-  admin: '/(admin)/',
-};
-
-const ROLE_LABEL_MAP: Record<string, string> = {
-  employee: 'Employee Dashboard',
-  hr: 'HR Dashboard',
-  admin: 'Admin Dashboard',
-};
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function TwoFactorAuth() {
-  const { role = 'employee' } = useLocalSearchParams<{ role: string }>();
-  const { updateUser } = useUser();
+  const { updateUser, syncUserFromApi } = useUser();
+  const params = useLocalSearchParams<{ email?: string }>();
   const [code, setCode] = useState<string>('');
   const [timer, setTimer] = useState(54);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [challengeEmail, setChallengeEmail] = useState<string>('');
+  const [pendingUserId, setPendingUserId] = useState<string>('');
   const CODE_LENGTH = 6;
 
-  const dashboardRoute = ROLE_DASHBOARD_MAP[role] || '/(employee)/';
-  const dashboardLabel = ROLE_LABEL_MAP[role] || 'Dashboard';
+  const dashboardRoute = '/(employee)/';
+  const dashboardLabel = 'Employee Dashboard';
 
   const progressWidth = useRef(new Animated.Value(0)).current;
   const checkmarkScale = useRef(new Animated.Value(0)).current;
@@ -44,7 +43,23 @@ export default function TwoFactorAuth() {
       duration: 800,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
+
+  useEffect(() => {
+    const loadPendingChallenge = async () => {
+      const challenge = await getPendingTwoFactorChallenge();
+      if (!challenge?.userId) {
+        Alert.alert('Session Expired', 'Please sign in again to request a new verification code.');
+        router.replace('/(auth)/sign-in');
+        return;
+      }
+
+      setPendingUserId(challenge.userId);
+      setChallengeEmail(challenge.email || String(params.email || ''));
+    };
+
+    loadPendingChallenge();
+  }, [params.email]);
 
   // Handle countdown timer
   useEffect(() => {
@@ -66,21 +81,41 @@ export default function TwoFactorAuth() {
     }
   };
 
-  const handleVerify = () => {
+  useEffect(() => {
+    if (isSuccess) {
+      const timer = setTimeout(() => {
+        try {
+          router.replace(dashboardRoute as any);
+        } catch (e) {
+          console.error("Navigation failed:", e);
+        }
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [isSuccess, dashboardRoute]);
+
+  const handleVerify = async () => {
     if (code.length !== CODE_LENGTH) return;
-    
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setIsVerifying(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      setIsVerifying(false);
+
+    try {
+      setIsVerifying(true);
+      const response = await verifyTwoFactorCode({
+        userId: pendingUserId,
+        otp: code,
+      });
+
+      await storeAuthSession({
+        token: response.token,
+        role: response.role,
+        user: response.user,
+      });
+      await clearPendingTwoFactorChallenge();
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setIsSuccess(true);
+      syncUserFromApi(response.user);
+      updateUser({ systemRole: response.role });
       
-      // Update system role in context
-      updateUser({ systemRole: role as any });
-      
-      // Animate success state
       Animated.timing(progressWidth, {
         toValue: 100,
         duration: 2000,
@@ -94,12 +129,42 @@ export default function TwoFactorAuth() {
         tension: 40,
         useNativeDriver: true,
       }).start();
-      
-      // Navigate to role-based dashboard after delay
-      setTimeout(() => {
-        router.replace(dashboardRoute as any);
-      }, 2500);
-    }, 1500);
+    } catch (error) {
+      Alert.alert('Verification Failed', error instanceof Error ? error.message : 'Unable to verify the code.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!pendingUserId && !challengeEmail) {
+      Alert.alert('Session Expired', 'Please sign in again to request a new verification code.');
+      router.replace('/(auth)/sign-in');
+      return;
+    }
+
+    try {
+      setIsResending(true);
+      const response = await resendTwoFactorCode({
+        userId: pendingUserId || undefined,
+        email: challengeEmail || undefined,
+      });
+
+      await storePendingTwoFactorChallenge({
+        email: challengeEmail,
+        userId: response.userId,
+      });
+
+      setPendingUserId(response.userId);
+      setCode('');
+      setTimer(54);
+      Alert.alert('Code Sent', response.message);
+    } catch (error) {
+      Alert.alert('Resend Failed', error instanceof Error ? error.message : 'Unable to resend the verification code.');
+    } finally {
+      setIsResending(false);
+    }
   };
 
   const renderNumpad = () => {
@@ -163,10 +228,8 @@ export default function TwoFactorAuth() {
             </Text>
 
             <View style={styles.roleBadge}>
-              <Ionicons name={
-                role === 'hr' ? 'people' : role === 'admin' ? 'shield-checkmark' : 'person'
-              } size={14} color="#5a55d2" />
-              <Text style={styles.roleBadgeText}>Signing in as {role.charAt(0).toUpperCase() + role.slice(1)}</Text>
+              <Ionicons name="person" size={14} color="#007AFF" />
+              <Text style={styles.roleBadgeText}>Signing in as Employee</Text>
             </View>
 
             <View style={styles.progressBarContainer}>
@@ -201,7 +264,7 @@ export default function TwoFactorAuth() {
         {/* Header Icon Section */}
         <View style={styles.headerIconWrapper}>
           <LinearGradient
-            colors={['#6366f1', '#4f46e5']}
+            colors={['#007AFF', '#007AFF']}
             style={styles.headerIconGradient}
           >
             <Ionicons name="shield-checkmark" size={24} color="#fff" />
@@ -210,9 +273,8 @@ export default function TwoFactorAuth() {
 
         <Text style={styles.title}>Secure Login</Text>
         <Text style={styles.subtitle}>
-          We've sent a 6-digit verification code to your device. Please enter it below.
+          We&apos;ve sent a 6-digit verification code to {challengeEmail || 'your email'}. Please enter it below.
         </Text>
-
         {/* Code Input Boxes */}
         <View style={styles.codeContainer}>
           {Array.from({ length: CODE_LENGTH }).map((_, index) => (
@@ -242,7 +304,7 @@ export default function TwoFactorAuth() {
           activeOpacity={0.8}
         >
           {isVerifying ? (
-            <Text style={styles.verifyButtonText}>Securing...</Text>
+            <ActivityIndicator color="#fff" size="small" />
           ) : (
             <>
               <Text style={styles.verifyButtonText}>Verify Account</Text>
@@ -253,15 +315,20 @@ export default function TwoFactorAuth() {
 
         {/* Resend Code Section */}
         <View style={styles.resendWrapper}>
-          <Text style={styles.resendInfo}>Didn't get code? </Text>
+          <Text style={styles.resendInfo}>Didn’t get code? </Text>
           {timer > 0 ? (
             <Text style={styles.timerInfo}>Wait {timer}s</Text>
           ) : (
-            <TouchableOpacity onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setTimer(54);
-            }}>
-              <Text style={styles.resendAction}>Resend Now</Text>
+            <TouchableOpacity
+              disabled={isResending}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleResend();
+              }}
+            >
+              <Text style={[styles.resendAction, isResending && styles.resendActionDisabled]}>
+                {isResending ? 'Sending...' : 'Resend Now'}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -278,7 +345,7 @@ export default function TwoFactorAuth() {
               onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
             >
               <View style={styles.backButtonIconCircle}>
-                <Ionicons name="chevron-back" size={18} color="#6366f1" />
+                <Ionicons name="chevron-back" size={18} color="#007AFF" />
               </View>
               <Text style={styles.elegantBackButtonText}>Back to Sign In</Text>
             </TouchableOpacity>
@@ -318,13 +385,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#4f46e5',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
   },
   title: {
-    fontSize: 28,
+    fontSize: 15,
     fontWeight: '800',
     color: '#0f172a',
     textAlign: 'center',
@@ -359,30 +426,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   codeBoxActive: {
-    borderColor: '#6366f1',
+    borderColor: '#007AFF',
     backgroundColor: '#fff',
-    shadowColor: '#6366f1',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
   },
   codeBoxFilled: {
-    borderColor: '#6366f1',
+    borderColor: '#007AFF',
     backgroundColor: '#fff',
   },
   codeText: {
-    fontSize: 24,
+    fontSize: 16,
     fontWeight: '700',
     color: '#1e293b',
   },
   cursor: {
     width: 2,
     height: 24,
-    backgroundColor: '#6366f1',
+    backgroundColor: '#007AFF',
     position: 'absolute',
   },
   verifyButton: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#007AFF',
     borderRadius: 18,
     height: 56,
     width: SCREEN_WIDTH * 0.8,
@@ -390,7 +457,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#6366f1',
+    shadowColor: '#007AFF',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -427,8 +494,11 @@ const styles = StyleSheet.create({
   },
   resendAction: {
     fontSize: 13,
-    color: '#6366f1',
+    color: '#007AFF',
     fontWeight: '700',
+  },
+  resendActionDisabled: {
+    opacity: 0.6,
   },
   numpadContainer: {
     width: '100%',
@@ -556,7 +626,7 @@ const styles = StyleSheet.create({
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#6366f1',
+    backgroundColor: '#007AFF',
     borderRadius: 3,
   },
   continueButton: {

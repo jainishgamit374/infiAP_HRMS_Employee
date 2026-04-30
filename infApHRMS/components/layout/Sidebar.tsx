@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,25 +6,30 @@ import {
   TouchableOpacity,
   Dimensions,
   Pressable,
-  Platform,
   Image,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
+  Easing,
   interpolate,
-  Extrapolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 import { router, usePathname } from 'expo-router';
 import { useSidebar } from '../../context/SidebarContext';
 import { useUser } from '../../context/UserContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { resolveImageSource } from '@/utils/image';
 // import { BlurView } from 'expo-blur';
 
-const { width, height } = Dimensions.get('window');
-const SIDEBAR_WIDTH = width * 0.75;
+const { width } = Dimensions.get('window');
+const SIDEBAR_WIDTH = Math.min(width * 0.76, 328);
+const OVERLAY_OPACITY = 0.24;
+const OPEN_DURATION = 320;
+const CLOSE_DURATION = 220;
 
 const MENU_CONFIG = {
   employee: [
@@ -37,54 +42,57 @@ const MENU_CONFIG = {
     { icon: 'notifications-outline', label: 'Notifications', route: '/(employee)/notifications' },
     { icon: 'settings-outline', label: 'Settings', route: '/(employee)/profile-settings' },
   ],
-  hr: [
-    { icon: 'grid-outline', label: 'Dashboard', route: '/(hr)/' },
-    { icon: 'person-outline', label: 'My Profile', route: '/(hr)/profile' },
-    { icon: 'people-outline', label: 'Employees', route: '/(hr)/employee-management' },
-    { icon: 'calendar-outline', label: 'Leaves', route: '/(hr)/leave' },
-    { icon: 'time-outline', label: 'Attendance', route: '/(hr)/attendance' },
-    { icon: 'briefcase-outline', label: 'Recruitment', route: '/(hr)/recruitment' },
-    { icon: 'cash-outline', label: 'Finance', route: '/(hr)/finance' },
-    { icon: 'settings-outline', label: 'Analytics', route: '/(hr)/analytics' },
-  ],
-  admin: [
-    { icon: 'grid-outline', label: 'Dashboard', route: '/(admin)/' },
-    { icon: 'person-outline', label: 'My Profile', route: '/(admin)/profile' },
-    { icon: 'business-outline', label: 'Departments', route: '/(admin)/departments' },
-    { icon: 'people-outline', label: 'User Management', route: '/(admin)/users' },
-    { icon: 'settings-outline', label: 'System Settings', route: '/(admin)/settings' },
-    { icon: 'shield-outline', label: 'Security', route: '/(admin)/security' },
-    { icon: 'notifications-outline', label: 'Notifications', route: '/(admin)/notifications' },
-  ]
 };
 
 const Sidebar = () => {
   const { isOpen, closeSidebar } = useSidebar();
   const { user } = useUser();
   const pathname = usePathname();
-  const translateX = useSharedValue(-SIDEBAR_WIDTH);
+  const insets = useSafeAreaInsets();
+  const progress = useSharedValue(0);
+  const [isMounted, setIsMounted] = useState(isOpen);
 
-  const menuItems = MENU_CONFIG[user.systemRole] || MENU_CONFIG.employee;
+  const menuItems = MENU_CONFIG.employee;
 
   useEffect(() => {
-    translateX.value = withSpring(isOpen ? 0 : -SIDEBAR_WIDTH, {
-      damping: 20,
-      stiffness: 100,
-    });
-  }, [isOpen]);
+    if (isOpen) {
+      setIsMounted(true);
+    }
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+    progress.value = withTiming(
+      isOpen ? 1 : 0,
+      {
+        duration: isOpen ? OPEN_DURATION : CLOSE_DURATION,
+        easing: isOpen
+          ? Easing.bezier(0.22, 1, 0.36, 1)
+          : Easing.bezier(0.4, 0, 1, 1),
+      },
+      (finished) => {
+        if (finished && !isOpen) {
+          runOnJS(setIsMounted)(false);
+        }
+      }
+    );
+  }, [isOpen, progress]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const translateX = interpolate(progress.value, [0, 1], [-SIDEBAR_WIDTH - 24, 0]);
+    const scale = interpolate(progress.value, [0, 1], [0.985, 1]);
+    const opacity = interpolate(progress.value, [0, 1], [0.9, 1]);
+
+    return {
+      opacity,
+      transform: [{ translateX }, { scale }],
+    };
+  });
 
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      translateX.value,
-      [-SIDEBAR_WIDTH, 0],
-      [0, 1],
-      Extrapolate.CLAMP
-    ),
-    display: translateX.value === -SIDEBAR_WIDTH ? 'none' : 'flex' as any,
+    opacity: interpolate(progress.value, [0, 1], [0, OVERLAY_OPACITY]),
+  }));
+
+  const contentStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 1], [0.35, 1]),
+    transform: [{ translateX: interpolate(progress.value, [0, 1], [-18, 0]) }],
   }));
 
   const handleNavigate = (route: string) => {
@@ -92,77 +100,96 @@ const Sidebar = () => {
     router.push(route as any);
   };
 
+  if (!isMounted) {
+    return null;
+  }
+
   return (
     <>
       <Animated.View style={[styles.backdrop, backdropStyle]}>
         <Pressable style={styles.flex1} onPress={closeSidebar} />
       </Animated.View>
 
-      <Animated.View style={[styles.sidebar, animatedStyle]}>
-        <View style={styles.header}>
-          <View style={styles.logoAndName}>
-            <Image
-              source={require('../../assets/images/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <View>
-              <Text style={styles.appName}>infiAp HRMS</Text>
-              <Text style={styles.appTagline}>Modern Workforce</Text>
+      <Animated.View
+        style={[
+          styles.sidebar,
+          {
+            paddingTop: insets.top + 10,
+            paddingBottom: Math.max(insets.bottom, 12),
+          },
+          animatedStyle,
+        ]}>
+        <Animated.View style={[styles.content, contentStyle]}>
+          <View style={styles.header}>
+            <View style={styles.logoAndName}>
+              <Image
+                source={require('../../assets/images/logo.png')}
+                style={styles.logo}
+                resizeMode="contain"
+              />
+              <View style={styles.brandCopy}>
+                <Text style={styles.appName} numberOfLines={1}>infiAp HRMS</Text>
+                <Text style={styles.appTagline}>Modern Workforce</Text>
+              </View>
             </View>
+            <TouchableOpacity onPress={closeSidebar} style={styles.closeBtn} activeOpacity={0.75}>
+              <Ionicons name="close" size={24} color="#64748b" />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={closeSidebar} style={styles.closeBtn}>
-            <Ionicons name="close" size={24} color="#64748b" />
+
+          <TouchableOpacity
+            style={styles.userProfile}
+            onPress={() => handleNavigate('/(employee)/profile')}
+            activeOpacity={0.82}
+          >
+            <Image source={resolveImageSource(user.avatar)} style={styles.userAvatar} />
+            <View style={styles.userInfo}>
+              <Text style={styles.userName} numberOfLines={1}>{user.name}</Text>
+              <Text style={styles.userRole} numberOfLines={1}>{user.role}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#94a3b8" />
           </TouchableOpacity>
-        </View>
 
-        <TouchableOpacity 
-          style={styles.userProfile}
-          onPress={() => handleNavigate(`/${user.systemRole === 'admin' ? '(admin)' : user.systemRole === 'hr' ? '(hr)' : '(employee)'}/profile` as any)}
-        >
-           <Image source={user.avatar} style={styles.userAvatar} />
-           <View style={styles.userInfo}>
-              <Text style={styles.userName}>{user.name}</Text>
-              <Text style={styles.userRole}>{user.role}</Text>
-           </View>
-           <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
-        </TouchableOpacity>
+          <ScrollView
+            style={styles.menuScroll}
+            contentContainerStyle={styles.menuContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            {menuItems.map((item, index) => {
+              const isActive = pathname === item.route || (item.route === '/(employee)/' && (pathname === '/(employee)' || pathname === '/(employee)/'));
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.menuItem, isActive && styles.activeMenuItem]}
+                  onPress={() => handleNavigate(item.route)}
+                  activeOpacity={0.82}
+                >
+                  <View style={[styles.iconWrap, isActive && styles.activeIconWrap]}>
+                    <Ionicons
+                      name={item.icon as any}
+                      size={24}
+                      color={isActive ? '#334155' : '#64748b'}
+                    />
+                  </View>
+                  <Text style={[styles.menuLabel, isActive && styles.activeMenuLabel]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
-        <View style={styles.menuContainer}>
-          {menuItems.map((item, index) => {
-            const isActive = pathname === item.route || (item.route === `/${user.systemRole === 'admin' ? '(admin)' : user.systemRole === 'hr' ? '(hr)' : '(employee)'}/` && (pathname === `/${user.systemRole === 'admin' ? '(admin)' : user.systemRole === 'hr' ? '(hr)' : '(employee)'}` || pathname === `/${user.systemRole === 'admin' ? '(admin)' : user.systemRole === 'hr' ? '(hr)' : '(employee)'}/`));
-            return (
-              <TouchableOpacity
-                key={index}
-                style={[styles.menuItem, isActive && styles.activeMenuItem]}
-                onPress={() => handleNavigate(item.route)}
-              >
-                <View style={[styles.iconWrap, isActive && styles.activeIconWrap]}>
-                  <Ionicons
-                    name={item.icon as any}
-                    size={20}
-                    color={isActive ? '#4f46e5' : '#64748b'}
-                  />
-                </View>
-                <Text style={[styles.menuLabel, isActive && styles.activeMenuLabel]}>
-                  {item.label}
-                </Text>
-                {isActive && <View style={styles.activeIndicator} />}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.logoutBtn} onPress={() => {
-            closeSidebar();
-            router.replace('/(auth)/sign-in');
-          }}>
-            <Ionicons name="log-out-outline" size={20} color="#ef4444" />
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
-          <Text style={styles.versionText}>v1.0.0 (Pre-Alpha)</Text>
-        </View>
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.8} onPress={() => {
+              closeSidebar();
+              router.replace('/(auth)/sign-in');
+            }}>
+              <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+              <Text style={styles.logoutText}>Sign Out</Text>
+            </TouchableOpacity>
+            <Text style={styles.versionText}>v1.0.0 (Pre-Alpha)</Text>
+          </View>
+        </Animated.View>
       </Animated.View>
     </>
   );
@@ -174,7 +201,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(15, 23, 42, 0.28)',
     zIndex: 9998,
   },
   sidebar: {
@@ -185,57 +212,75 @@ const styles = StyleSheet.create({
     width: SIDEBAR_WIDTH,
     backgroundColor: '#fff',
     zIndex: 9999,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    borderTopRightRadius: 34,
+    borderBottomRightRadius: 34,
     shadowColor: '#000',
-    shadowOffset: { width: 10, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
+    shadowOffset: { width: 12, height: 0 },
+    shadowOpacity: 0.11,
+    shadowRadius: 24,
     elevation: 20,
+  },
+  content: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    marginBottom: 32,
+    marginBottom: 20,
   },
   logoAndName: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+    flex: 1,
+  },
+  brandCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   logo: {
-    width: 100,
-    height: 32,
+    width: 52,
+    height: 22,
   },
   appName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
-    color: '#1e293b',
+    color: '#0f172a',
   },
   appTagline: {
-    fontSize: 10,
+    marginTop: 2,
+    fontSize: 9,
     color: '#64748b',
     fontWeight: '600',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
   closeBtn: {
-    padding: 4,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f8fafc',
+    marginLeft: 10,
   },
   userProfile: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginBottom: 32,
-    backgroundColor: '#f8fafc',
-    marginHorizontal: 12,
-    paddingVertical: 16,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    marginBottom: 22,
+    backgroundColor: '#f8fbff',
+    marginHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#eef2f7',
   },
   userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 2,
     borderColor: '#fff',
   },
@@ -244,78 +289,80 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userName: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: '#0f172a',
   },
   userRole: {
-    fontSize: 12,
+    marginTop: 2,
+    fontSize: 11,
     color: '#64748b',
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  menuScroll: {
+    flex: 1,
   },
   menuContainer: {
-    flex: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 18,
+    paddingTop: 6,
+    paddingBottom: 18,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    minHeight: 60,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 12,
-    marginBottom: 4,
+    borderRadius: 16,
+    marginBottom: 6,
   },
   activeMenuItem: {
-    backgroundColor: '#4f46e510',
+    backgroundColor: '#f8fafc',
   },
   iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   activeIconWrap: {
-    backgroundColor: '#4f46e515',
+    backgroundColor: '#f1f5f9',
   },
   menuLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#64748b',
     flex: 1,
   },
   activeMenuLabel: {
-    color: '#4f46e5',
-    fontWeight: '700',
-  },
-  activeIndicator: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#4f46e5',
+    color: '#475569',
   },
   footer: {
-    padding: 24,
+    paddingHorizontal: 22,
+    paddingTop: 14,
+    paddingBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: '#eef2f7',
   },
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
+    gap: 12,
+    minHeight: 46,
+    marginBottom: 10,
   },
   logoutText: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: '#ef4444',
   },
   versionText: {
     fontSize: 10,
     color: '#94a3b8',
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '600',
   },
 });
 

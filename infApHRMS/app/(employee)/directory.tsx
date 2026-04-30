@@ -1,10 +1,9 @@
 import * as React from 'react';
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Image, TextInput, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { BottomNav } from '../../components/BottomNav';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 
 const TEAMS = ['All Teams', 'Engineering', 'Design', 'Marketing', 'Product', 'HR'];
@@ -17,7 +16,11 @@ const EMPLOYEES = [
     team: 'PRODUCT DESIGN',
     teamColor: '#22c55e',
     image: require('../../assets/images/sarah.png'),
-    status: 'active'
+    status: 'active',
+    bio: 'Creates thoughtful experiences with a strong focus on clarity, storytelling, and user trust.',
+    rating: '4.8',
+    earned: '$45k+',
+    rate: '$50/hr',
   },
   {
     id: '2',
@@ -26,7 +29,11 @@ const EMPLOYEES = [
     team: 'ENGINEERING',
     teamColor: '#94a3b8',
     image: require('../../assets/images/marcus.png'),
-    status: 'inactive'
+    status: 'inactive',
+    bio: 'Builds reliable systems and leads platform architecture for high-scale internal products.',
+    rating: '4.9',
+    earned: '$52k+',
+    rate: '$65/hr',
   },
   {
     id: '3',
@@ -35,7 +42,11 @@ const EMPLOYEES = [
     team: 'MARKETING',
     teamColor: '#22c55e',
     image: require('../../assets/images/elena.png'),
-    status: 'active'
+    status: 'active',
+    bio: 'Leads growth strategy across campaigns, retention loops, and performance storytelling.',
+    rating: '4.7',
+    earned: '$41k+',
+    rate: '$48/hr',
   },
   {
     id: '4',
@@ -44,13 +55,18 @@ const EMPLOYEES = [
     team: 'ENGINEERING',
     teamColor: '#22c55e',
     image: require('../../assets/images/david.png'),
-    status: 'active'
+    status: 'active',
+    bio: 'Crafts fast, polished interfaces and turns product ideas into scalable frontend systems.',
+    rating: '4.9',
+    earned: '$49k+',
+    rate: '$58/hr',
   }
 ];
 
 export default function DirectoryPage() {
   const [activeTeam, setActiveTeam] = useState('All Teams');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState<(typeof EMPLOYEES)[number] | null>(null);
 
   const filteredEmployees = EMPLOYEES.filter(emp => {
     // Exact mapping for filter chips
@@ -119,7 +135,12 @@ export default function DirectoryPage() {
 
         {/* Employee Cards */}
         {filteredEmployees.map((employee) => (
-          <View key={employee.id} style={styles.card}>
+          <TouchableOpacity
+            key={employee.id}
+            style={styles.card}
+            activeOpacity={0.92}
+            onPress={() => setSelectedEmployee(employee)}
+          >
             <View style={styles.cardInfo}>
               <View style={styles.teamBadge}>
                 <View style={[styles.statusDot, { backgroundColor: employee.teamColor }]} />
@@ -149,11 +170,82 @@ export default function DirectoryPage() {
               style={styles.employeePhoto} 
               resizeMode="cover"
             />
-          </View>
+          </TouchableOpacity>
         ))}
 
         <View style={{ height: 120 }} />
       </ScrollView>
+
+      <Modal
+        visible={Boolean(selectedEmployee)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedEmployee(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setSelectedEmployee(null)} />
+          {selectedEmployee && (
+            <View style={styles.modalSheet}>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setSelectedEmployee(null)}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="close" size={20} color="#ffffff" />
+              </TouchableOpacity>
+
+              <Image source={selectedEmployee.image} style={styles.modalImage} resizeMode="cover" />
+
+              <LinearGradient
+                colors={['rgba(8, 15, 28, 0.02)', 'rgba(8, 15, 28, 0.46)', 'rgba(8, 15, 28, 0.92)']}
+                locations={[0.15, 0.55, 1]}
+                style={styles.modalGradient}
+              >
+                <View style={styles.modalContent}>
+                  <View style={styles.modalTextBlock}>
+                    <View style={styles.modalNameRow}>
+                      <Text style={styles.modalName}>{selectedEmployee.name}</Text>
+                      <Ionicons name="checkmark-circle" size={18} color="#60a5fa" />
+                    </View>
+                    <Text style={styles.modalRole}>{selectedEmployee.role}</Text>
+                    <Text style={styles.modalBio}>{selectedEmployee.bio}</Text>
+                  </View>
+
+                  <View style={styles.statsRow}>
+                    <View style={styles.statItem}>
+                      <View style={styles.statTopRow}>
+                        <Ionicons name="star" size={15} color="#fbbf24" />
+                        <Text style={styles.statValue}>{selectedEmployee.rating}</Text>
+                      </View>
+                      <Text style={styles.statLabel}>Rating</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>{selectedEmployee.earned}</Text>
+                      <Text style={styles.statLabel}>Earned</Text>
+                    </View>
+                    <View style={styles.statDivider} />
+                    <View style={styles.statItem}>
+                      <Text style={styles.statValue}>{selectedEmployee.rate}</Text>
+                      <Text style={styles.statLabel}>Rate</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity style={styles.primaryAction} activeOpacity={0.9}>
+                      <Ionicons name="mail-outline" size={20} color="#111827" />
+                      <Text style={styles.primaryActionText}>Get In Touch</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.secondaryAction} activeOpacity={0.9}>
+                      <Ionicons name="bookmark-outline" size={20} color="#ffffff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </LinearGradient>
+            </View>
+          )}
+        </View>
+      </Modal>
 
       <BottomNav />
     </View>
@@ -240,6 +332,152 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(2, 6, 23, 0.5)',
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  modalSheet: {
+    width: '100%',
+    maxWidth: 360,
+    height: 600,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0b1220',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  modalCloseButton: {
+    position: 'absolute',
+    top: 18,
+    right: 18,
+    zIndex: 3,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  modalImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalGradient: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    paddingHorizontal: 22,
+    paddingBottom: 22,
+    paddingTop: 120,
+  },
+  modalTextBlock: {
+    marginBottom: 20,
+  },
+  modalNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  modalName: {
+    flexShrink: 1,
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  modalRole: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.82)',
+    marginBottom: 8,
+  },
+  modalBio: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: 'rgba(255,255,255,0.88)',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(15, 23, 42, 0.28)',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    marginBottom: 18,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  statTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.72)',
+  },
+  statDivider: {
+    width: 1,
+    marginVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  primaryAction: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 28,
+    backgroundColor: '#ffffff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  primaryActionText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  secondaryAction: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   cardInfo: {
     flex: 1,

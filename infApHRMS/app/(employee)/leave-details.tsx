@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -35,6 +35,7 @@ export default function LeaveDetails() {
   };
 
   const statusColors = getStatusColor(leave.status);
+  const approverName = leave.approverName || 'Reporting Manager';
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
@@ -68,7 +69,6 @@ export default function LeaveDetails() {
       />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Card 1: Overview and Status */}
         <Animated.View entering={FadeInDown.delay(100).springify().damping(15)} style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.iconBox}>
@@ -78,37 +78,47 @@ export default function LeaveDetails() {
               <Text style={styles.leaveType}>{leave.type}</Text>
               <Text style={styles.appliedDate}>Applied on {formatDate(leave.appliedDate)}</Text>
             </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.statusSection}>
-            <Text style={styles.sectionLabel}>Current Status</Text>
             <View style={[styles.badge, { backgroundColor: statusColors.bg }]}>
               <Text style={[styles.badgeText, { color: statusColors.text }]}>{leave.status}</Text>
             </View>
           </View>
-        </Animated.View>
 
-        {/* Card 2: Dates and Reason */}
-        <Animated.View entering={FadeInDown.delay(200).springify().damping(15)} style={styles.card}>
-          <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
+          <View style={styles.divider} />
+
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryItem}>
               <Text style={styles.detailLabel}>Start Date</Text>
               <Text style={styles.detailValue}>{formatDate(leave.startDate)}</Text>
             </View>
-            <View style={styles.detailItem}>
+            <View style={styles.summaryItem}>
               <Text style={styles.detailLabel}>End Date</Text>
               <Text style={styles.detailValue}>{formatDate(leave.endDate)}</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.detailLabel}>Total Days</Text>
+              <Text style={styles.detailValue}>{leave.days} Day{leave.days > 1 ? 's' : ''}</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.detailLabel}>Approver</Text>
+              <Text style={styles.detailValue}>{approverName}</Text>
             </View>
           </View>
 
           <View style={styles.divider} />
 
-          <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>Total Days</Text>
-              <Text style={styles.detailValue}>{leave.days} Day{leave.days > 1 ? 's' : ''}</Text>
+          <View style={styles.approvalRow}>
+            <View style={[styles.statusDot, { backgroundColor: statusColors.text }]} />
+            <View style={styles.approvalTextWrap}>
+              <Text style={styles.approvalLabel}>Approval Status</Text>
+              <Text style={styles.approvalValue}>
+                {leave.status === 'PENDING'
+                  ? `Waiting for ${approverName} to approve`
+                  : leave.status === 'APPROVED'
+                    ? `Approved by ${approverName}`
+                    : leave.status === 'REJECTED'
+                      ? `Rejected by ${approverName}`
+                      : leave.status}
+              </Text>
             </View>
           </View>
 
@@ -118,20 +128,17 @@ export default function LeaveDetails() {
             <Text style={styles.detailLabel}>Reason for Leave</Text>
             <Text style={styles.reasonText}>{leave.reason}</Text>
           </View>
-        </Animated.View>
 
-        {/* Card 3: Rejection Reason (If Applicable) */}
-        {leave.status === 'REJECTED' && leave.rejectionReason && (
-          <Animated.View entering={FadeInDown.delay(300).springify().damping(15)} style={[styles.card, styles.rejectedCard]}>
-            <View style={styles.reasonSection}>
-               <View style={styles.rejectedHeader}>
-                 <Ionicons name="alert-circle" size={20} color="#ef4444" />
-                 <Text style={styles.rejectedLabel}>Rejection Reason</Text>
-               </View>
+          {leave.status === 'REJECTED' && leave.rejectionReason && (
+            <View style={styles.rejectedSection}>
+              <View style={styles.rejectedHeader}>
+                <Ionicons name="alert-circle" size={18} color="#ef4444" />
+                <Text style={styles.rejectedLabel}>Rejection Reason</Text>
+              </View>
               <Text style={styles.rejectedText}>{leave.rejectionReason}</Text>
             </View>
-          </Animated.View>
-        )}
+          )}
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -208,16 +215,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9',
     marginVertical: 16,
   },
-  statusSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#334155',
-  },
   badge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -229,12 +226,14 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  detailRow: {
+  summaryGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
+    rowGap: 18,
   },
-  detailItem: {
-    flex: 1,
+  summaryItem: {
+    width: '48%',
   },
   detailLabel: {
     fontSize: 13,
@@ -247,6 +246,36 @@ const styles = StyleSheet.create({
     color: '#1e293b',
     fontWeight: '600',
   },
+  approvalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 12,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  approvalTextWrap: {
+    flex: 1,
+  },
+  approvalLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  approvalValue: {
+    fontSize: 14,
+    color: '#1e293b',
+    fontWeight: '700',
+    lineHeight: 20,
+  },
   reasonSection: {
     flex: 1,
   },
@@ -256,9 +285,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 4,
   },
-  rejectedCard: {
+  rejectedSection: {
     backgroundColor: '#fff5f5',
+    borderWidth: 1,
     borderColor: '#fee2e2',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 16,
   },
   rejectedHeader: {
     flexDirection: 'row',

@@ -40,8 +40,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: "16kb" }));
-app.use(express.urlencoded({ extended: true, limit: "16kb" }));
+app.use(express.json({ limit: "6mb" }));
+app.use(express.urlencoded({ extended: true, limit: "6mb" }));
 app.use(express.static("public"));
 app.use(cookieParser());
 
@@ -51,6 +51,11 @@ const mainAdminRouter = require("./routes/mainAdmin.routes");
 const employeeRouter = require("./routes/employee.routes");
 const leaveRouter = require("./routes/leave.routes");
 const hrRouter = require("./routes/hr.routes");
+const adminDashboardRouter = require("./routes/adminDashboard.routes");
+const mainAdminDashboardRouter = require("./routes/mainAdminDashboard.routes");
+const wfhRouter = require("./routes/wfh.routes");
+const eventRouter = require("./routes/event.routes");
+const notificationsRouter = require("./routes/notifications.routes");
 
 // Routes Declaration
 app.use("/api/v1/auth", authRouter);
@@ -58,6 +63,11 @@ app.use("/api/v1/main-admin", mainAdminRouter);
 app.use("/api/v1", employeeRouter);
 app.use("/api/v1", leaveRouter);
 app.use("/api/v1/hr", hrRouter);
+app.use("/api/v1/admin-dashboard", adminDashboardRouter);
+app.use("/api/v1/main-admin-dashboard", mainAdminDashboardRouter);
+app.use("/api/v1/wfh", wfhRouter);
+app.use("/api/v1/events", eventRouter);
+app.use("/api/v1/notifications", notificationsRouter);
 
 // Basic health check
 app.get("/", (req, res) => {
