@@ -30,10 +30,10 @@ export const getExactCurrentLocation = async (): Promise<ExactLocation> => {
   const longitude = position.coords.longitude;
   const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
 
-  const addressParts = [place?.name, place?.street, place?.district, place?.city, place?.region]
+  const addressParts = [place?.street, place?.district, place?.city, place?.region]
     .filter(Boolean)
     .map((part) => String(part).trim())
-    .filter(Boolean);
+    .filter((part) => part.length > 0 && !part.includes('+'));
 
   const localityParts = [place?.city, place?.region, place?.country]
     .filter(Boolean)
@@ -54,7 +54,5 @@ export const getExactCurrentLocation = async (): Promise<ExactLocation> => {
 };
 
 export const formatExactLocationLabel = (location: Pick<ExactLocation, 'coordinateLabel' | 'addressLabel'>) => {
-  return location.addressLabel === location.coordinateLabel
-    ? location.coordinateLabel
-    : `${location.coordinateLabel} • ${location.addressLabel}`;
+  return location.addressLabel;
 };

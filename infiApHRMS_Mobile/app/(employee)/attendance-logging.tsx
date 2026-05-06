@@ -58,7 +58,7 @@ export default function AttendanceLogging() {
 
   useEffect(() => {
     // Logo entrance with optimized spring
-    logoScale.value = withSpring(1, { damping: 12, mass: 1, overshootClamping: false });
+    logoScale.value = withSpring(1, { damping: 30, mass: 1, overshootClamping: false });
 
     // Ripple effect for map marker - smoother and more efficient
     rippleScale.value = withRepeat(withTiming(2.5, { duration: 1800 }), -1, false);
@@ -90,10 +90,10 @@ export default function AttendanceLogging() {
         setMapRegion((previousRegion) => {
           const nextRegion = previousRegion
             ? {
-                ...previousRegion,
-                latitude: nextLocation.latitude,
-                longitude: nextLocation.longitude,
-              }
+              ...previousRegion,
+              latitude: nextLocation.latitude,
+              longitude: nextLocation.longitude,
+            }
             : createLocationRegion(nextLocation);
 
           if (followLocation) {
@@ -389,16 +389,6 @@ export default function AttendanceLogging() {
 
             {currentLocation ? (
               <>
-                <View style={styles.coordRow}>
-                  <View style={styles.coordItem}>
-                    <Text style={styles.coordLabel}>Latitude</Text>
-                    <Text style={styles.coordValue}>{currentLocation.latitude.toFixed(4)}°</Text>
-                  </View>
-                  <View style={styles.coordItem}>
-                    <Text style={styles.coordLabel}>Longitude</Text>
-                    <Text style={styles.coordValue}>{currentLocation.longitude.toFixed(4)}°</Text>
-                  </View>
-                </View>
 
                 <View style={styles.addressRow}>
                   <View style={styles.addressIcon}>
