@@ -1,0 +1,162 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Building2, 
+  ArrowLeft, 
+  ChevronDown, 
+  LayoutGrid,
+  MapPin,
+  Users,
+  Check
+} from 'lucide-react';
+import { useAdminDashboard } from '../../../context/AdminDashboardContext';
+
+const CreateDepartment = () => {
+  const navigate = useNavigate();
+  const { addDepartment } = useAdminDashboard();
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    manager: '',
+    location: '',
+    teams: ''
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await addDepartment(formData);
+    navigate('/admin/departments');
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in slide-in-from-bottom-8 duration-700">
+      
+      {/* Back Link */}
+      <button 
+        onClick={() => navigate('/admin/departments')}
+        className="flex items-center gap-2 text-slate-400 hover:text-indigo-600 font-black text-[10px] uppercase tracking-widest mb-10 transition-colors mr-auto ml-[15%]"
+      >
+        <ArrowLeft size={16} />
+        Back to Departments
+      </button>
+
+      {/* Main Form Card */}
+      <div className="w-full max-w-[800px] bg-white rounded-[48px] border border-slate-50 shadow-soft overflow-hidden">
+        <div className="p-12 md:p-16">
+          
+          {/* Header */}
+          <div className="flex items-center gap-8 mb-16 px-2">
+            <div className="w-20 h-20 bg-indigo-50 text-indigo-500 rounded-[28px] flex items-center justify-center shadow-lg shadow-indigo-100 transition-transform hover:scale-110">
+              <Building2 size={36} />
+            </div>
+            <div>
+              <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-2">Create Department</h1>
+              <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1 leading-none">Setup new organizational unit</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-12">
+            <div className="space-y-8">
+              {/* Department Name */}
+              <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">Department Name</label>
+                <input 
+                  type="text"
+                  placeholder="e.g. Engineering, Marketing..."
+                  className="w-full bg-slate-50 border border-slate-100 rounded-[24px] px-8 py-5 text-lg font-bold text-slate-800 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/20 focus:bg-white transition-all outline-none placeholder:text-slate-300"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  required
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">Department Description</label>
+                <textarea 
+                  placeholder="Briefly describe the department's role and objectives..."
+                  rows="4"
+                  className="w-full bg-slate-50 border border-slate-100 rounded-[32px] px-8 py-6 text-lg font-bold text-slate-800 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/20 focus:bg-white transition-all outline-none placeholder:text-slate-300 resize-none"
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  required
+                />
+              </div>
+
+              {/* Department Manager */}
+              <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">Department Manager</label>
+                <div className="relative">
+                  <select 
+                    className="w-full appearance-none bg-slate-50 border border-slate-100 rounded-[24px] px-8 py-5 text-lg font-bold text-slate-800 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/20 focus:bg-white transition-all outline-none"
+                    value={formData.manager}
+                    onChange={(e) => setFormData({...formData, manager: e.target.value})}
+                    required
+                  >
+                    <option value="" disabled>Select a manager from system</option>
+                    <option value="rahul">Rahul Sharma</option>
+                    <option value="priya">Priya Kapur</option>
+                    <option value="amit">Amit Verma</option>
+                  </select>
+                  <ChevronDown className="absolute right-8 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={24} />
+                </div>
+              </div>
+
+              {/* Location & Teams */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">Primary Location</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                    <input 
+                      type="text"
+                      placeholder="e.g. Headquarters"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-[24px] pl-16 pr-8 py-5 text-lg font-bold text-slate-800 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/20 focus:bg-white transition-all outline-none placeholder:text-slate-300"
+                      value={formData.location}
+                      onChange={(e) => setFormData({...formData, location: e.target.value})}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-4">Initial Teams Count</label>
+                  <div className="relative">
+                    <LayoutGrid className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+                    <input 
+                      type="number"
+                      placeholder="0"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-[24px] pl-16 pr-8 py-5 text-lg font-bold text-slate-800 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500/20 focus:bg-white transition-all outline-none placeholder:text-slate-300"
+                      value={formData.teams}
+                      onChange={(e) => setFormData({...formData, teams: e.target.value})}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Bar */}
+            <div className="flex flex-col md:flex-row items-center gap-6 pt-8">
+              <button 
+                type="submit"
+                className="w-full md:flex-1 py-6 bg-linear-to-r from-[#4E63F0] to-[#6855E8] text-white rounded-[24px] font-black text-[10px] uppercase tracking-[0.25em] shadow-2xl shadow-indigo-100 hover:shadow-indigo-300 hover:-translate-y-1 transition-all active:scale-95 flex items-center justify-center gap-4"
+              >
+                <Check size={20} strokeWidth={3} />
+                Create Department
+              </button>
+              <button 
+                type="button"
+                onClick={() => navigate('/admin/departments')}
+                className="w-full md:w-auto px-12 py-6 bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 rounded-[24px] font-black text-[10px] uppercase tracking-[0.25em] transition-all"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CreateDepartment;
