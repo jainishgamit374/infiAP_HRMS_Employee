@@ -15,22 +15,27 @@ const put = (path, data) => api.put(`${HR_BASE}${path}`, data);
 export const getDashboardSummary = () => get('/dashboard/summary');
 export const getHrProfile = () => get('/profile');
 export const updateProfile = async (employeeId, profileData, imageFile) => {
+    // If no image file, send as JSON
+    if (!imageFile) {
+        const response = await api.put(`/hr/employees/${employeeId}`, profileData);
+        return response.data;
+    }
+
+    // If image file exists, use FormData
     const formData = new FormData();
 
-    if (imageFile) {
-        if (imageFile instanceof File) {
-            formData.append('profilePicture', imageFile);
-        } else if (imageFile.uri) {
-            const filename = imageFile.name || imageFile.uri.split('/').pop();
-            const match = /\.(\w+)$/.exec(filename || '');
-            const type = match ? `image/${match[1]}` : 'image';
+    if (imageFile instanceof File) {
+        formData.append('profilePicture', imageFile);
+    } else if (imageFile.uri) {
+        const filename = imageFile.name || imageFile.uri.split('/').pop();
+        const match = /\.(\w+)$/.exec(filename || '');
+        const type = match ? `image/${match[1]}` : 'image';
 
-            formData.append('profilePicture', {
-                uri: imageFile.uri,
-                name: filename,
-                type,
-            });
-        }
+        formData.append('profilePicture', {
+            uri: imageFile.uri,
+            name: filename,
+            type,
+        });
     }
 
     Object.keys(profileData || {}).forEach((key) => {
@@ -40,6 +45,7 @@ export const updateProfile = async (employeeId, profileData, imageFile) => {
         }
     });
 
+    // Let browser set Content-Type with boundary automatically
     const response = await api.put(`/hr/employees/${employeeId}`, formData);
     return response.data;
 };

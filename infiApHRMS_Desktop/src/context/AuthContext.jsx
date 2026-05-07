@@ -18,8 +18,8 @@ const normalizeRole = (role) => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState(() => localStorage.getItem('userRole') || null);
-  const [token, setToken] = useState(() => localStorage.getItem('accessToken') || localStorage.getItem('token') || null);
+  const [role, setRole] = useState(null);
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -30,24 +30,14 @@ export const AuthProvider = ({ children }) => {
   const storeAuth = (authToken, userData) => {
     const normalizedUser = userData || {};
     const normalizedRole = normalizeRole(normalizedUser.role);
-    localStorage.setItem('accessToken', authToken);
-    localStorage.setItem('token', authToken); // Legacy support
-    localStorage.setItem('userRole', normalizedRole || '');
-    localStorage.setItem('userName', normalizedUser.name || '');
-    localStorage.setItem('userEmail', normalizedUser.email || '');
-    localStorage.setItem('userId', normalizedUser.id || normalizedUser._id || '');
+    // Token is stored in cookies by backend, no localStorage needed for token
     setToken(authToken);
     setRole(normalizedRole);
     setUser({ ...normalizedUser, role: normalizedRole });
   };
 
   const clearAuth = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('token');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('userEmail');
-    localStorage.removeItem('userId');
+    // Clear cookie by calling logout endpoint
     setToken(null);
     setRole(null);
     setUser(null);
@@ -56,25 +46,20 @@ export const AuthProvider = ({ children }) => {
 
   // ── Hydrate on mount — check stored token ───────────────────────────────
   const hydrate = useCallback(async () => {
-    const storedToken = localStorage.getItem('accessToken') || localStorage.getItem('token');
-    if (!storedToken) {
-      setLoading(false);
-      return;
-    }
-
     try {
+      // Call /auth/me to get fresh data from database (token is in cookies)
       const res = await apiClient.get('/auth/me');
-      const userData = res.data?.data;
+      // Backend returns { message, user } not { data }
+      const userData = res.data?.user || res.data?.data;
       if (userData) {
         const normalizedRole = normalizeRole(userData.role);
         setUser({ ...userData, role: normalizedRole });
         setRole(normalizedRole);
-        setToken(storedToken);
-      } else {
-        clearAuth();
+        setToken(res.config?.headers?.Authorization?.replace('Bearer ', '') || null);
       }
-    } catch {
+    } catch (err) {
       // Token expired or invalid
+      console.error('Hydration failed:', err.message);
       clearAuth();
     } finally {
       setLoading(false);
@@ -203,19 +188,21 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── Logout ──────────────────────────────────────────────────────────────
-  const logout = () => {
-    clearAuth();
+  const logout = async () => {
+    try {
+      // Call backend logout to clear cookies
+      await apiClient.post('/auth/logout');
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      clearAuth();
+    }
   };
 
   // Legacy compat — switchRole for role-based nav
   const switchRole = (newRole) => {
     const normalizedRole = normalizeRole(newRole);
     setRole(normalizedRole);
-    if (normalizedRole) {
-      localStorage.setItem('userRole', normalizedRole);
-    } else {
-      localStorage.removeItem('userRole');
-    }
   };
 
   return (

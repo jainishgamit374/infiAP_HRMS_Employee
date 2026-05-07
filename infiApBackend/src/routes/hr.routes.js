@@ -3,6 +3,7 @@ const router = express.Router();
 const hrController = require("../controllers/hr.controller");
 const { verifyJWT } = require("../middlewares/auth.middleware");
 const { verifyRole } = require("../middlewares/role.middleware");
+const { uploadSingle } = require("../middlewares/upload.middleware");
 
 // All HR routes require authentication
 router.use(verifyJWT);
@@ -14,7 +15,7 @@ router.get("/profile", hrController.getHRAdminProfile);
 // -> Employee
 router.get("/employees", hrController.getAllEmployees);
 router.post("/employees", verifyRole(["hr", "admin", "superadmin"]), hrController.addEmployee);
-router.put("/employees/:id", verifyRole(["hr", "admin", "superadmin"]), hrController.editEmployee);
+router.put("/employees/:id", verifyRole(["hr", "admin", "superadmin"]), uploadSingle, hrController.editEmployee);
 router.get("/employees/:id/profile", hrController.getEmployeeProfile);
 
 // -> Attendance (Detailed)

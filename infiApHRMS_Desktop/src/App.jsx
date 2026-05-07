@@ -11,7 +11,8 @@ import AddEmployee from './pages/hr-dashboard/employee-management/AddEmployee';
 import EditEmployee from './pages/hr-dashboard/employee-management/EditEmployee';
 import EmployeeProfiles from './pages/hr-dashboard/employee-management/EmployeeProfiles';
 import EmployeeProfilesHub from './pages/hr-dashboard/employee-management/EmployeeProfilesHub';
-import MyProfile from './pages/hr-dashboard/employee-management/MyProfile';
+import MyProfile from './pages/hr-dashboard/profile-management/MyProfile';
+import EditProfile from './pages/hr-dashboard/profile-management/EditProfile';
 import AttendanceDashboard from './pages/hr-dashboard/attendance-management/AttendanceDashboard';
 import CheckInRecords from './pages/hr-dashboard/attendance-management/CheckInRecords';
 import MonthlyAttendance from './pages/hr-dashboard/attendance-management/MonthlyAttendance';
@@ -247,6 +248,7 @@ function App() {
                       <Route path="/employees/edit/:id" element={<EditEmployee />} />
                       <Route path="/employees/profile/:id" element={<EmployeeProfiles />} />
                       <Route path="/profile" element={<MyProfile />} />
+                      <Route path="/profile/edit" element={<EditProfile />} />
 
                       <Route path="/attendance" element={<AttendanceDashboard />} />
                       <Route path="/attendance/records" element={<CheckInRecords />} />

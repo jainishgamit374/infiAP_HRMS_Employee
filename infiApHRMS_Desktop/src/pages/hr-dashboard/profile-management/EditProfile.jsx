@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import { getEmployeeProfile, updateProfile } from '../../../services/hrApi';
+import { getHrProfile, updateProfile } from '../../../services/hrApi';
 import {
   ArrowLeft,
   Save,
@@ -23,7 +23,7 @@ import {
 
 const EditProfile = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, fetchProfile } = useAuth();
   const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -52,18 +52,29 @@ const EditProfile = () => {
       }
 
       try {
-        const userId = user._id || user.id;
-        const response = await getEmployeeProfile(userId);
-        const profileData = response.data?.data || user;
+        const response = await getHrProfile();
+        const apiData = response.data?.data || {};
+        
+        // Normalize HR profile data from API response
+        const profileData = {
+          name: apiData?.header?.name || apiData?.name || user?.name || '',
+          email: apiData?.personalInfo?.emailId || apiData?.email || user?.email || '',
+          phone: apiData?.personalInfo?.phoneNumber || apiData?.phone || user?.phone || '',
+          address: apiData?.personalInfo?.address || apiData?.address || user?.address || '',
+          department: apiData?.professionalInfo?.department || apiData?.department || user?.department || '',
+          designation: apiData?.professionalInfo?.designation || apiData?.header?.post || apiData?.designation || user?.designation || '',
+          employeeId: apiData?.professionalInfo?.employeeId || apiData?.header?.hrId || apiData?.employeeId || user?.employeeId || '',
+          joiningDate: apiData?.personalInfo?.joiningDate || apiData?.joiningDate || user?.joiningDate || ''
+        };
 
         setFormData({
-          name: profileData.name || '',
-          email: profileData.email || '',
-          phone: profileData.phone || '',
-          address: profileData.address || '',
-          department: profileData.department || '',
-          designation: profileData.designation || profileData.role || '',
-          employeeId: profileData.employeeId || profileData._id?.slice(0, 8).toUpperCase() || '',
+          name: profileData.name,
+          email: profileData.email,
+          phone: profileData.phone,
+          address: profileData.address,
+          department: profileData.department,
+          designation: profileData.designation,
+          employeeId: profileData.employeeId || user?._id?.slice(0, 8).toUpperCase() || '',
           joiningDate: profileData.joiningDate ? profileData.joiningDate.split('T')[0] : ''
         });
       } catch (err) {
@@ -155,7 +166,10 @@ const EditProfile = () => {
     setSuccess(false);
 
     try {
-      const userId = user._id || user.id;
+      const userId = user?._id || user?.id;
+      if (!userId) {
+        throw new Error('User ID not found. Please log in again.');
+      }
 
       const profileData = {
         ...formData,
@@ -164,6 +178,11 @@ const EditProfile = () => {
       delete profileData.employeeId;
 
       await updateProfile(userId, profileData, profilePicture);
+
+      // Refresh auth context user data so navbar shows updated info
+      if (typeof fetchProfile === 'function') {
+        await fetchProfile();
+      }
 
       setSuccess(true);
       setTimeout(() => {

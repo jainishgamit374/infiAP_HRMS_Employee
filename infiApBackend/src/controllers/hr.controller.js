@@ -61,7 +61,13 @@ exports.getHRAdminProfile = async (req, res) => {
                 fullName: user.name,
                 joiningDate: user.joiningDate,
                 phoneNumber: user.phone,
-                emailId: user.email
+                emailId: user.email,
+                address: user.address
+            },
+            professionalInfo: {
+                department: user.department,
+                designation: user.designation,
+                employeeId: user.employeeId
             },
             administrativeAccess: {
                 accessLevel: user.role, // e.g. "hr", "admin"
@@ -100,6 +106,14 @@ exports.editEmployee = async (req, res) => {
         const { id } = req.params;
         const updates = req.body;
         delete updates.password; // Forbid password update here
+        
+        // Handle file upload if present
+        if (req.file) {
+            // Convert buffer to base64 for storage (or use cloud storage in production)
+            const base64Image = req.file.buffer.toString('base64');
+            const mimeType = req.file.mimetype;
+            updates.profileImage = `data:${mimeType};base64,${base64Image}`;
+        }
         
         const employee = await User.findByIdAndUpdate(id, updates, { new: true });
         if (!employee) return res.status(404).json({ success: false, message: "Employee not found" });

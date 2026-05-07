@@ -4,6 +4,7 @@ const User = require("../models/user.model");
 // Verify JWT Token
 const verifyJWT = async (req, res, next) => {
     try {
+        // Prioritize cookies over Authorization header (cookies are set by backend)
         const token =
             req.cookies?.accessToken ||
             req.header("Authorization")?.replace("Bearer ", "");

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import { getEmployeeProfile } from '../../../services/hrApi';
+import { getHrProfile } from '../../../services/hrApi';
 import {
   ArrowLeft,
   Edit,
@@ -32,13 +32,24 @@ const MyProfile = () => {
       }
 
       try {
-        const userId = user._id || user.id;
-        const response = await getEmployeeProfile(userId);
-        if (response.data?.data) {
-          setProfile(response.data.data);
-        } else {
-          setProfile(user);
-        }
+        const response = await getHrProfile();
+        const apiData = response.data?.data;
+        
+        // Normalize HR profile data from API response
+        const normalizedProfile = {
+          name: apiData?.header?.name || apiData?.name || user?.name || '',
+          email: apiData?.personalInfo?.emailId || apiData?.email || user?.email || '',
+          phone: apiData?.personalInfo?.phoneNumber || apiData?.phone || user?.phone || '',
+          address: apiData?.personalInfo?.address || apiData?.address || user?.address || '',
+          department: apiData?.professionalInfo?.department || apiData?.department || user?.department || '',
+          designation: apiData?.professionalInfo?.designation || apiData?.header?.post || apiData?.designation || user?.designation || '',
+          role: apiData?.administrativeAccess?.accessLevel || apiData?.role || user?.role || '',
+          employeeId: apiData?.professionalInfo?.employeeId || apiData?.header?.hrId || apiData?.employeeId || user?.employeeId || '',
+          joiningDate: apiData?.personalInfo?.joiningDate || apiData?.joiningDate || user?.joiningDate || '',
+          profilePicture: apiData?.header?.profileImage || apiData?.profileImage || user?.profileImage || user?.profilePicture || '',
+        };
+        
+        setProfile(normalizedProfile);
       } catch (err) {
         console.error('Error fetching profile:', err);
         // Fallback to user data from auth context

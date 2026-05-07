@@ -12,25 +12,31 @@ const Navbar = () => {
   useEffect(() => {
     let isMounted = true;
 
-    if (!user?.name) {
-      getHrProfile()
-        .then((response) => {
-          if (!isMounted) return;
-          setProfile(response.data?.data || null);
-        })
-        .catch(() => {
-          if (!isMounted) return;
-          setProfile(null);
-        });
-    }
+    // Always fetch fresh profile data to show updated info
+    getHrProfile()
+      .then((response) => {
+        if (!isMounted) return;
+        const apiData = response.data?.data;
+        // Normalize HR profile data
+        const normalizedProfile = {
+          name: apiData?.header?.name || apiData?.name || user?.name || 'HR User',
+          role: apiData?.administrativeAccess?.accessLevel || apiData?.role || user?.role || 'hr',
+          profileImage: apiData?.header?.profileImage || apiData?.profileImage || user?.profileImage || user?.profilePicture,
+        };
+        setProfile(normalizedProfile);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setProfile(null);
+      });
 
     return () => {
       isMounted = false;
     };
   }, [user]);
 
-  const displayName = user?.name || profile?.name || 'HR User';
-  const displayRole = profile?.role === 'HR' || user?.role === 'HR' ? 'HR Panel' : 'HR Panel';
+  const displayName = profile?.name || user?.name || 'HR User';
+  const displayRole = 'HR Panel';
 
   return (
     <div className="h-20 bg-white border-b border-[#E7EBF7] sticky top-0 z-10 flex items-center justify-between px-8 w-full">
@@ -72,9 +78,12 @@ const Navbar = () => {
 
           <div className="w-10 h-10 rounded-xl overflow-hidden border border-[#E7EBF7] p-0.5 bg-white group-hover:border-[#C7D2FA] transition-all">
             <img
-              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=5a54e8&color=fff`}
+              src={profile?.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=5a54e8&color=fff`}
               alt="User"
               className="w-full h-full object-cover rounded-[10px]"
+              onError={(e) => {
+                e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=5a54e8&color=fff`;
+              }}
             />
           </div>
 

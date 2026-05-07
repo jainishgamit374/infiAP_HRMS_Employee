@@ -23,7 +23,7 @@ const NOTIFICATION_CATEGORIES = ["announcement", "policy", "alert"];
 const NOTIFICATION_AUDIENCES = ["all_employee", "department", "hr"];
 const NOTIFICATION_STATUSES = ["Draft", "Scheduled", "Sent"];
 const ACTIVE_STAFF_ROLES = ["employee", "manager", "hr", "admin"];
-const ADMIN_PROFILE_UPDATABLE_FIELDS = ["name", "email", "phone", "address", "dob", "profileImage", "designation", "department", "employeeId"];
+const ADMIN_PROFILE_UPDATABLE_FIELDS = ["name", "email", "phone", "address", "dob", "profileImage", "designation", "department", "employeeId", "joiningDate"];
 
 const toNumber = (value) => {
     const parsed = Number(value);
