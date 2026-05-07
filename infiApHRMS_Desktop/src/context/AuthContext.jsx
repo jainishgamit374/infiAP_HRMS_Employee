@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authService } from '../services/auth.service';
 import apiClient from '../services/apiClient';
+import { tokenStore } from '../services/tokenStore';
 
 const AuthContext = createContext();
 
@@ -30,14 +31,17 @@ export const AuthProvider = ({ children }) => {
   const storeAuth = (authToken, userData) => {
     const normalizedUser = userData || {};
     const normalizedRole = normalizeRole(normalizedUser.role);
-    // Token is stored in cookies by backend, no localStorage needed for token
+    // Store token in memory store as fallback when cookies don't work
+    tokenStore.setToken(authToken);
+    tokenStore.setRole(normalizedRole);
     setToken(authToken);
     setRole(normalizedRole);
     setUser({ ...normalizedUser, role: normalizedRole });
   };
 
   const clearAuth = () => {
-    // Clear cookie by calling logout endpoint
+    // Clear token store and state
+    tokenStore.clearToken();
     setToken(null);
     setRole(null);
     setUser(null);
@@ -47,24 +51,41 @@ export const AuthProvider = ({ children }) => {
   // ── Hydrate on mount — check stored token ───────────────────────────────
   const hydrate = useCallback(async () => {
     try {
-      // Call /auth/me to get fresh data from database (token is in cookies)
+      // Restore token from sessionStorage if available (survives page refresh)
+      const storedToken = tokenStore.getToken();
+      if (storedToken && !token) {
+        setToken(storedToken);
+      }
+
+      // Call /auth/me to get fresh data from database (token is in cookies or Authorization header)
       const res = await apiClient.get('/auth/me');
-      // Backend returns { message, user } not { data }
+      // Backend returns { message, user }
       const userData = res.data?.user || res.data?.data;
       if (userData) {
         const normalizedRole = normalizeRole(userData.role);
         setUser({ ...userData, role: normalizedRole });
         setRole(normalizedRole);
-        setToken(res.config?.headers?.Authorization?.replace('Bearer ', '') || null);
+
+        // Restore token: prefer already-stored sessionStorage token, 
+        // then try Authorization header from request config
+        const resolvedToken = storedToken ||
+          res.config?.headers?.Authorization?.replace('Bearer ', '') ||
+          null;
+        if (resolvedToken) {
+          setToken(resolvedToken);
+          tokenStore.setToken(resolvedToken);
+        }
+      } else {
+        clearAuth();
       }
     } catch (err) {
-      // Token expired or invalid
-      console.error('Hydration failed:', err.message);
+      // 401 = no valid session — expected for unauthenticated users
+      console.log('No active session:', err.message);
       clearAuth();
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // Empty dependency array - run only once on mount
 
   useEffect(() => {
     hydrate();
@@ -214,6 +235,7 @@ export const AuthProvider = ({ children }) => {
         loading,
         error,
         pending2FA,
+        isAuthenticated: !!user,  // true if user is hydrated (cookie OR token auth)
         login,
         verify2FA,
         register,

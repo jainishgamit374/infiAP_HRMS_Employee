@@ -25,42 +25,64 @@ const MyProfile = () => {
 
   useEffect(() => {
     const fetchProfile = async () => {
-      if (!user?._id && !user?.id) {
-        setError('User ID not found');
-        setLoading(false);
-        return;
-      }
-
+      setLoading(true);
+      setError(null);
+      
       try {
         const response = await getHrProfile();
-        const apiData = response.data?.data;
+        console.log('Profile API response:', response);
+        
+        // Check if response has data
+        if (!response.data || !response.data.data) {
+          throw new Error('No profile data received');
+        }
+        
+        const apiData = response.data.data;
         
         // Normalize HR profile data from API response
         const normalizedProfile = {
-          name: apiData?.header?.name || apiData?.name || user?.name || '',
-          email: apiData?.personalInfo?.emailId || apiData?.email || user?.email || '',
-          phone: apiData?.personalInfo?.phoneNumber || apiData?.phone || user?.phone || '',
-          address: apiData?.personalInfo?.address || apiData?.address || user?.address || '',
-          department: apiData?.professionalInfo?.department || apiData?.department || user?.department || '',
-          designation: apiData?.professionalInfo?.designation || apiData?.header?.post || apiData?.designation || user?.designation || '',
-          role: apiData?.administrativeAccess?.accessLevel || apiData?.role || user?.role || '',
-          employeeId: apiData?.professionalInfo?.employeeId || apiData?.header?.hrId || apiData?.employeeId || user?.employeeId || '',
-          joiningDate: apiData?.personalInfo?.joiningDate || apiData?.joiningDate || user?.joiningDate || '',
-          profilePicture: apiData?.header?.profileImage || apiData?.profileImage || user?.profileImage || user?.profilePicture || '',
+          name: apiData?.header?.name || apiData?.personalInfo?.fullName || 'Not specified',
+          email: apiData?.personalInfo?.emailId || '',
+          phone: apiData?.personalInfo?.phoneNumber || 'Not provided',
+          address: apiData?.personalInfo?.address || 'No address added',
+          department: apiData?.professionalInfo?.department || 'Not assigned',
+          designation: apiData?.professionalInfo?.designation || apiData?.header?.post || 'HR Administrator',
+          role: apiData?.administrativeAccess?.accessLevel || 'HR',
+          employeeId: apiData?.professionalInfo?.employeeId || apiData?.header?.hrId || 'EMP-' + (user?._id?.slice(0, 6).toUpperCase() || '000'),
+          joiningDate: apiData?.personalInfo?.joiningDate || null,
+          profilePicture: apiData?.header?.profileImage || null,
+          updatedAt: apiData?.updatedAt || new Date().toISOString()
         };
         
+        console.log('Normalized profile:', normalizedProfile);
         setProfile(normalizedProfile);
       } catch (err) {
         console.error('Error fetching profile:', err);
+        setError(err.message || 'Failed to load profile');
         // Fallback to user data from auth context
-        setProfile(user);
+        if (user) {
+          setProfile({
+            name: user.name || 'Not specified',
+            email: user.email || '',
+            phone: user.phone || 'Not provided',
+            address: user.address || 'No address added',
+            department: user.department || 'Not assigned',
+            designation: user.designation || 'HR Administrator',
+            role: user.role || 'HR',
+            employeeId: user.employeeId || 'EMP-' + (user._id?.slice(0, 6).toUpperCase() || '000'),
+            joiningDate: user.joiningDate || null,
+            profilePicture: user.profileImage || null,
+            updatedAt: new Date().toISOString()
+          });
+        }
       } finally {
         setLoading(false);
       }
     };
 
+    // Always fetch profile - API will handle auth via cookies
     fetchProfile();
-  }, [user]);
+  }, []); // Remove dependency - fetch once on mount
 
   if (loading) {
     return (

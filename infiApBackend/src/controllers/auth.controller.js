@@ -77,10 +77,10 @@ const sanitizeUser = (user) => ({
 
 // Cookie options — works for both web (cookies) and mobile (token in body)
 const getCookieOptions = () => ({
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    // "none" required for cross-origin (React Native / separate frontend domain)
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    httpOnly: false, // Allow JS access for development proxy troubleshooting
+    secure: false,   // Development uses HTTP
+    sameSite: "lax",
+    path: "/",     // Cookie available on all paths
     maxAge: 24 * 60 * 60 * 1000, // 1 day
 });
 
@@ -484,9 +484,10 @@ exports.logout = async (req, res) => {
         await User.findByIdAndUpdate(userId, { $unset: { refreshToken: 1 } });
 
         const clearOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            httpOnly: false,
+            secure: false,
+            sameSite: "lax",
+            path: "/",
         };
 
         return res

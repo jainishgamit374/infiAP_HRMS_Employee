@@ -16,6 +16,21 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
+        configure: (proxy, _options) => {
+          proxy.on('proxyRes', (proxyRes, req, res) => {
+            // Rewrite cookies to remove domain restriction so browser stores them for localhost:5173
+            const cookies = proxyRes.headers['set-cookie'];
+            if (cookies && Array.isArray(cookies)) {
+              const rewrittenCookies = cookies.map(cookie => {
+                // Remove Domain attribute and ensure Path is /
+                return cookie
+                  .replace(/;\s*Domain=[^;]+/gi, '')
+                  .replace(/;\s*Path=[^;]+/gi, '; Path=/');
+              });
+              proxyRes.headers['set-cookie'] = rewrittenCookies;
+            }
+          });
+        },
       },
       '/uploads': {
         target: 'http://localhost:3000',

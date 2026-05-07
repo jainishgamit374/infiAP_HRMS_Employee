@@ -30,18 +30,24 @@ const LeaveApproval = () => {
         try {
           const res = await getLeaveRequests({ status: 'Pending', limit: 1 });
           const leaves = res.data?.data || [];
+          console.log('Leave requests response:', res);
+          console.log('Leaves array:', leaves);
           if (leaves.length > 0) {
             const leave = leaves[0];
+            console.log('Leave data:', leave);
+            console.log('EmployeeID:', leave.EmployeeID);
+            console.log('ProfileImage:', leave.EmployeeID?.profileImage);
             const start = new Date(leave.StartDate);
             const end = new Date(leave.EndDate);
             const diffTime = Math.abs(end - start);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-            
+
             setLeaveRequest({
               id: leave._id,
               employeeName: leave.EmployeeID?.name || 'Unknown Employee',
               employeeId: leave.EmployeeID?.employeeId || 'N/A',
               department: leave.EmployeeID?.department || 'N/A',
+              profileImage: leave.EmployeeID?.profileImage || null,
               type: leave.LeaveType,
               days: leave.IsHalfDay ? 0.5 : diffDays,
               range: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`,
@@ -113,12 +119,27 @@ const LeaveApproval = () => {
         id: leaveRequest.employeeId,
         dept: leaveRequest.department,
         role: 'Employee',
-        avatar: `https://i.pravatar.cc/150?u=${leaveRequest.employeeName.split(' ')[0].toLowerCase()}`,
+        profileImage: leaveRequest.profileImage,
         stats: {
             taken: 12,
             remaining: 18,
             trend: '-2% from last year'
         }
+    };
+
+    const getInitials = (name) => {
+        return name ? name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U';
+    };
+
+    const getProfileImage = (image) => {
+        if (!image) return null;
+        // If it's a base64 string, return it as is
+        if (image.startsWith('data:image')) return image;
+        // If it's a relative path starting with /uploads, prefix with backend URL
+        if (image.startsWith('/uploads')) return `http://localhost:3000${image}`;
+        // If it's a relative path without /, prefix with backend URL
+        if (!image.startsWith('http')) return `http://localhost:3000/uploads/${image}`;
+        return image;
     };
 
     const request = {
@@ -164,33 +185,56 @@ const LeaveApproval = () => {
                 
                 {/* 1. LEFT: Employee Intelligence & Metrics */}
                 <div className="xl:col-span-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-10">
-                    <div className="card-soft bg-white p-10 border-slate-100 shadow-soft relative overflow-hidden group">
+                    <div className="bg-white p-8 border border-slate-100 shadow-sm rounded-3xl relative overflow-hidden group">
                         <div className="relative z-10 flex flex-col items-center">
-                            <div className="w-32 h-32 rounded-[48px] bg-slate-50 p-2 mb-8 group-hover:scale-105 transition-all">
-                                <img src={employee.avatar} className="w-full h-full rounded-[40px] border-4 border-white shadow-xl object-cover" alt="" />
+                            {/* Profile Image */}
+                            <div className="w-28 h-28 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 p-1 mb-6 group-hover:scale-105 transition-all shadow-xl">
+                                {employee.profileImage ? (
+                                    <img
+                                        src={getProfileImage(employee.profileImage)}
+                                        className="w-full h-full rounded-full border-4 border-white object-cover"
+                                        alt={employee.name}
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            e.target.parentElement.innerHTML = `<div class="w-full h-full rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center border-4 border-white"><span class="text-3xl font-black text-white">${getInitials(employee.name)}</span></div>`;
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="w-full h-full rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center border-4 border-white">
+                                        <span className="text-3xl font-black text-white">{getInitials(employee.name)}</span>
+                                    </div>
+                                )}
                             </div>
-                            <h2 className="text-3xl font-black text-slate-800 tracking-tight leading-none mb-2 uppercase">{employee.name}</h2>
-                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-10">{employee.role}</p>
-                            
-                            <div className="w-full space-y-4">
-                                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+
+                            {/* Employee Name & Role */}
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none mb-1">{employee.name}</h2>
+                            <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-6">{employee.role}</p>
+
+                            {/* Employee Info Cards */}
+                            <div className="w-full space-y-3">
+                                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white rounded-xl border border-slate-100 hover:border-indigo-200 transition-all">
                                     <div className="flex items-center gap-3">
-                                        <ShieldCheck size={18} className="text-primary-500" />
-                                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">ID Verified</span>
+                                        <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+                                            <ShieldCheck size={16} className="text-indigo-600" />
+                                        </div>
+                                        <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Employee ID</span>
                                     </div>
-                                    <span className="text-[11px] font-bold text-slate-400">{employee.id}</span>
+                                    <span className="text-sm font-bold text-slate-800">{employee.id}</span>
                                 </div>
-                                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white rounded-xl border border-slate-100 hover:border-indigo-200 transition-all">
                                     <div className="flex items-center gap-3">
-                                        <MapPin size={18} className="text-primary-500" />
-                                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Department</span>
+                                        <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
+                                            <MapPin size={16} className="text-indigo-600" />
+                                        </div>
+                                        <span className="text-xs font-black text-slate-600 uppercase tracking-wider">Department</span>
                                     </div>
-                                    <span className="text-[11px] font-bold text-slate-400">{employee.dept}</span>
+                                    <span className="text-sm font-bold text-slate-800">{employee.dept}</span>
                                 </div>
                             </div>
                         </div>
-                        <div className="absolute top-0 right-0 p-8 scale-150 opacity-10 rotate-12">
-                            <ShieldCheck size={100} className="text-primary-500" />
+                        {/* Decorative background */}
+                        <div className="absolute top-0 right-0 p-6 opacity-5">
+                            <ShieldCheck size={80} className="text-indigo-600" />
                         </div>
                     </div>
 

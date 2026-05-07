@@ -39,6 +39,7 @@ router.get("/leaves/history", hrController.getLeaveHistory);
 router.post("/leaves/generate-report", verifyRole(["hr", "admin", "superadmin"]), hrController.generateLeaveReport);
 
 // -> Recruitment
+router.get("/recruitment/dashboard", hrController.getRecruitmentDashboard);
 router.get("/recruitment/candidates/tracking", hrController.getCandidateTrackingList);
 router.get("/recruitment/candidates/review", hrController.getReviewApplications);
 router.get("/recruitment/candidates/recent", hrController.getRecentCandidatesDetail);

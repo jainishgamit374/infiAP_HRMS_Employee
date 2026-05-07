@@ -49,32 +49,41 @@ const Dashboard = () => {
          try {
             const [summaryRes, recruitmentRes, attendanceRes, leaveStatsRes, attendanceNotificationsRes, todayLeavesRes, pendingLeavesRes] =
                await Promise.all([
-                  hrService.getDashboardSummary(),
-                  hrService.getRecruitmentDashboard().catch(() => ({ data: {} })),
-                  hrService.getAttendanceDailyOverview().catch(() => ({ data: {} })),
-                  hrService.getLeaveStats().catch(() => ({ data: {} })),
-                  hrService.getAttendanceNotifications().catch(() => ({ data: {} })),
-                  hrService.getTodayLeaves().catch(() => ({ data: {} })),
-                  hrService.getPendingLeaves().catch(() => ({ data: [] })),
+                  hrService.getDashboardSummary().catch(() => ({ success: false })),
+                  hrService.getRecruitmentDashboard().catch(() => ({ success: false })),
+                  hrService.getAttendanceDailyOverview().catch(() => ({ success: false })),
+                  hrService.getLeaveStats().catch(() => ({ success: false })),
+                  hrService.getAttendanceNotifications().catch(() => ({ success: false })),
+                  hrService.getTodayLeaves().catch(() => ({ success: false })),
+                  hrService.getPendingLeaves().catch(() => ({ success: false })),
                ]);
 
-            const summary = summaryRes?.data?.data || {};
-            const recruitment = recruitmentRes?.data?.data || {};
-            const attendance = attendanceRes?.data?.data || {};
-            const leaveStats = leaveStatsRes?.data?.data || {};
-            const attendanceNotifications = attendanceNotificationsRes?.data?.data || {};
-            const todayLeaves = todayLeavesRes?.data?.data || todayLeavesRes?.data || [];
-            const pendingLeaveList = pendingLeavesRes?.data?.data || pendingLeavesRes?.data || [];
+            const summary = summaryRes?.success ? summaryRes.data : {};
+            const recruitment = recruitmentRes?.success ? recruitmentRes.data : {};
+            const attendance = attendanceRes?.success ? attendanceRes.data : {};
+            const leaveStats = leaveStatsRes?.success ? leaveStatsRes.data : {};
+            const attendanceNotifications = attendanceNotificationsRes?.success ? attendanceNotificationsRes.data : {};
+            const todayLeaves = todayLeavesRes?.success ? (todayLeavesRes.data || []) : [];
+            const pendingLeaveList = pendingLeavesRes?.success ? (pendingLeavesRes.data || []) : [];
+
+            console.log('Dashboard API responses:', {
+               summary,
+               recruitment,
+               attendance,
+               leaveStats,
+               attendanceNotifications,
+               todayLeaves,
+               pendingLeaveList
+            });
 
             const employees = toNumber(summary.totalEmployees, summary.employeeCount, summary.employees);
             const activeJobs = toNumber(recruitment.openJobs, recruitment.totalOpenJobs, recruitment.jobs, recruitment.count);
-            const attendanceToday = toNumber(attendance.presentToday, attendance.presentCount, summary.presentCount);
+            const attendanceToday = toNumber(attendance.presentToday, attendance.presentCount, summary.presentCount, attendance.count, attendance.present);
             const leavePending = toNumber(leaveStats.pending, leaveStats.leavePending);
             const pendingCorrections = toNumber(
+               attendanceNotifications.correctionRequests?.length,
                attendanceNotifications.pendingCorrections,
-               attendanceNotifications.totalCorrections,
-               attendanceNotifications.correctionsPending,
-               attendanceNotifications.pending
+               attendanceNotifications.totalCorrections
             );
             const onLeaveToday = toNumber(leaveStats.onLeaveToday, todayLeaves?.length, todayLeaves?.count);
 

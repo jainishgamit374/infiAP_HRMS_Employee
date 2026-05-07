@@ -48,28 +48,53 @@ const EmployeeProfiles = () => {
       try {
         const res = await getEmployeeProfile(id);
         const data = res.data?.data;
-        if (data) {
+        if (data && data.profileInfo) {
+          // Backend returns a nested object structure
+          const profile = data.profileInfo;
+          const personal = data.personalInfo || {};
+          const job = data.jobDetails || {};
+          
           setEmployee({
-            id: data._id || data.id,
-            name: data.name,
-            role: data.role || 'Employee',
-            email: data.email,
-            phone: data.phone || '+91 00000 00000',
-            location: data.location || 'Remote',
-            department: data.department || 'General',
-            manager: data.manager?.name || 'Not Assigned',
-            joiningDate: data.joiningDate ? new Date(data.joiningDate).toLocaleDateString() : 'N/A',
-            status: data.status || 'Active',
-            avatar: data.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'User')}`,
+            id: profile.employeeId || id,
+            name: profile.name || 'Unknown',
+            role: job.role || 'Employee',
+            email: personal.email || 'N/A',
+            phone: personal.phone || 'N/A',
+            location: personal.address || 'Office', // Address if available
+            department: job.department || 'General',
+            manager: job.manager?.name || 'Not Assigned',
+            joiningDate: job.joiningDate ? new Date(job.joiningDate).toLocaleDateString() : 'N/A',
+            status: job.status || 'Active',
+            avatar: profile.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(profile.name || 'User')}&background=random&color=fff`,
             banner: 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2000&auto=format&fit=crop'
           });
+        } else if (data) {
+           // Fallback if the backend returns a flat structure
+           setEmployee({
+             id: data._id || data.id || id,
+             name: data.name,
+             role: data.designation || data.role || 'Employee',
+             email: data.email,
+             phone: data.phone || 'N/A',
+             location: data.address || data.location || 'Office',
+             department: data.department || 'General',
+             manager: data.reportingManager?.name || data.manager || 'Not Assigned',
+             joiningDate: data.joiningDate ? new Date(data.joiningDate).toLocaleDateString() : 'N/A',
+             status: data.status || 'Active',
+             avatar: data.profileImage || data.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name || 'User')}&background=random&color=fff`,
+             banner: 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2000&auto=format&fit=crop'
+           });
         }
       } catch (err) {
         console.error('Failed to load profile, using context fallback:', err);
         // Fallback to context
-        const ctxEmp = employees.find(emp => String(emp.id) === String(id));
+        const ctxEmp = employees.find(emp => String(emp.id) === String(id) || String(emp.employeeId) === String(id));
         if (ctxEmp) {
-          setEmployee({ ...ctxEmp, avatar: ctxEmp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(ctxEmp.name || 'User')}` });
+          setEmployee({ 
+            ...ctxEmp, 
+            avatar: ctxEmp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(ctxEmp.name || 'User')}&background=random&color=fff`,
+            banner: 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2000&auto=format&fit=crop'
+          });
         } else {
           setEmployee({
             id: id || 'EMP-1024',
@@ -82,7 +107,7 @@ const EmployeeProfiles = () => {
             manager: 'Sneha Desai',
             joiningDate: 'Dec 12, 2022',
             status: 'Active',
-            avatar: 'https://i.pravatar.cc/150?u=arjun',
+            avatar: `https://ui-avatars.com/api/?name=Arjun+Mehta&background=random&color=fff`,
             banner: 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2000&auto=format&fit=crop'
           });
         }
@@ -205,7 +230,15 @@ const EmployeeProfiles = () => {
               <div className="p-10 border-b border-slate-50 bg-slate-50/20">
                  <div className="flex flex-col md:flex-row gap-10">
                     <div className="w-48 h-48 rounded-[48px] overflow-hidden border-8 border-white shadow-2xl bg-white shrink-0">
-                       <img src={employee.avatar} alt="" className="w-full h-full object-cover" />
+                       <img 
+                          src={employee.avatar} 
+                          alt="" 
+                          className="w-full h-full object-cover" 
+                          onError={(e) => {
+                             e.target.onerror = null; 
+                             e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(employee.name || 'User')}&background=random&color=fff&size=512`;
+                          }}
+                       />
                     </div>
                     <div className="flex-1 pt-4">
                        <div className="flex items-center gap-4 mb-3">

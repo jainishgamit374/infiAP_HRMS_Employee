@@ -46,13 +46,16 @@ export const EmployeeProvider = ({ children }) => {
         name: emp.name || 'Unknown',
         email: emp.email || '',
         phone: emp.phone || '',
-        role: emp.role || emp.designation || 'Employee',
+        // Backend stores job title as 'designation', not 'role'
+        role: emp.designation || emp.role || 'Employee',
         department: emp.department || 'General',
-        manager: emp.manager || '',
+        manager: emp.reportingManager?.name || emp.manager || '',
         status: emp.status || 'Active',
         joiningDate: emp.joiningDate || '',
-        salary: emp.salary || 0,
-        avatar: emp.avatar || `https://i.pravatar.cc/150?u=${(emp.name || 'user').split(' ')[0].toLowerCase()}`,
+        salary: emp.annualSalary || emp.salary || 0,
+        location: emp.address || emp.location || '',
+        // Backend stores profile pic as 'profileImage' — use real image, not random avatar
+        avatar: emp.profileImage || emp.avatar || null,
       }));
 
       setEmployees(employeeList);
@@ -108,13 +111,14 @@ export const EmployeeProvider = ({ children }) => {
           name: created.name,
           email: created.email,
           phone: created.phone,
-          role: created.role || created.designation,
+          role: created.designation || created.role,
           department: created.department,
-          manager: created.manager,
+          manager: created.reportingManager?.name || created.manager,
           status: created.status || 'Active',
           joiningDate: created.joiningDate,
-          salary: created.salary,
-          avatar: newEmployeeData.avatar || `https://i.pravatar.cc/150?u=${created.name?.split(' ')[0]?.toLowerCase()}`,
+          salary: created.annualSalary || created.salary,
+          location: created.address || created.location || '',
+          avatar: created.profileImage || created.avatar || newEmployeeData.avatar || null,
         };
         setEmployees(prev => [normalizedEmployee, ...prev]);
         return { success: true, data: normalizedEmployee };

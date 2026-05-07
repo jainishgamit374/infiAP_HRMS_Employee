@@ -633,10 +633,10 @@ exports.getPendingLeavesDetailed = async (req, res) => {
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
         const pendingLeaves = await LeaveApplication.find({ ApprovalStatus: "Awaiting Approve" })
-            .populate("EmployeeID", "name profileImage department employeeId")
+            .populate("EmployeeID", "name department employeeId profileImage")
             .sort({ createdAt: -1 })
             .skip(skip).limit(parseInt(limit));
-        
+
         const total = await LeaveApplication.countDocuments({ ApprovalStatus: "Awaiting Approve" });
 
         // Map data to include duration (number of days)
@@ -751,7 +751,7 @@ exports.getLeaveStats = async (req, res) => {
 
 exports.getLeaveRequests = async (req, res) => {
     try {
-        const requests = await LeaveApplication.find({ ApprovalStatus: "Awaiting Approve" }).populate("EmployeeID", "name department employeeId");
+        const requests = await LeaveApplication.find({ ApprovalStatus: "Awaiting Approve" }).populate("EmployeeID", "name department employeeId profileImage");
         res.status(200).json({ success: true, data: requests });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
