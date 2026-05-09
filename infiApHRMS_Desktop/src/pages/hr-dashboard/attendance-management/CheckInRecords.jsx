@@ -1,294 +1,434 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
-    Search,
-    Filter,
-    Download,
-    MapPin,
-    Clock,
-    Smartphone,
-    Laptop,
-    MoreHorizontal,
-    ExternalLink,
-    Flag,
-    Calendar,
-    ChevronDown,
-    BellRing,
-    ShieldCheck,
-    Globe,
-    Activity,
-    User,
-    History,
-    Info,
-    X,
-    ArrowRight
+  Search,
+  Download,
+  MapPin,
+  Clock,
+  Calendar,
+  ChevronDown,
+  BellRing,
+  X,
+  ArrowRight,
+  Briefcase,
+  Laptop,
+  Loader2
 } from 'lucide-react';
+import { getAttendanceRecords } from '../../../services/hrApi';
+
+const WORK_MODE_LABELS = {
+  1: 'Office',
+  2: 'WFH',
+  3: 'Meeting',
+  4: 'Offsite'
+};
+
+const STATUS_STYLES = {
+  Present: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  Late: 'bg-amber-50 text-amber-700 border-amber-100',
+  Absent: 'bg-rose-50 text-rose-700 border-rose-100',
+  'Checked Out': 'bg-blue-50 text-blue-700 border-blue-100'
+};
+
+function formatTime(dateStr) {
+  if (!dateStr) return '--:--';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '--:--';
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function calcDuration(inTime, outTime) {
+  if (!inTime || !outTime) return '--';
+  const start = new Date(inTime);
+  const end = new Date(outTime);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return '--';
+  const diffMs = end - start;
+  if (diffMs < 0) return '--';
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${mins}m`;
+}
+
+function formatDateDisplay(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 const CheckInRecords = () => {
-    // --- STATE ---
-    const [notification, setNotification] = useState(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedRecordId, setSelectedRecordId] = useState(1);
-    const [activeFilter, setActiveFilter] = useState('All');
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [notification, setNotification] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('All');
+  const [isExporting, setIsExporting] = useState(false);
 
-    const showNotification = (msg) => {
-        setNotification(msg);
-        setTimeout(() => setNotification(null), 3000);
+  const showNotification = (msg) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const res = await getAttendanceRecords({ date: selectedDate, limit: 100 });
+        const data = res.data?.data || [];
+        console.log('CheckInRecords raw data:', data);
+
+        const mapped = data.map((r, i) => ({
+          id: r._id || r.employeeId || `rec-${i}`,
+          name: r.name || 'Unknown',
+          role: r.designation || r.team || 'Employee',
+          checkIn: formatTime(r.inTime),
+          checkOut: formatTime(r.outTime),
+          inTimeRaw: r.inTime,
+          outTimeRaw: r.outTime,
+          duration: calcDuration(r.inTime, r.outTime),
+          date: formatDate(r.inTime || selectedDate),
+          status: r.status || 'Absent',
+          mode: WORK_MODE_LABELS[r.workMode] || '—',
+          device: r.device || '—',
+          location: r.team || '—',
+          ip: '—',
+          latitude: r.latitude,
+          longitude: r.longitude,
+          isAway: r.isAway,
+          avatar: r.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(r.name || 'U')}&background=e2e8f0&color=475569`
+        }));
+
+        setRecords(mapped);
+        if (mapped.length > 0) setSelectedRecordId(mapped[0].id);
+      } catch (err) {
+        console.error('Failed to fetch check-in records:', err);
+      } finally {
+        setLoading(false);
+      }
     };
+    fetchData();
+  }, [selectedDate]);
 
-    const [records] = useState([
-        { id: 1, name: 'Arjun Mehta', role: 'Principal Engineer', checkIn: '08:52 AM', checkOut: '05:45 PM', total: '8h 53m', date: '24 Oct 2023', device: 'iPhone 14 Pro', location: 'Mumbai HQ - Floor 4', ip: '192.168.1.45', status: 'On Time', avatar: 'https://i.pravatar.cc/150?u=arjun', verif: 'Face ID Verified', verifTime: '08:52:12' },
-        { id: 2, name: 'Priya Sharma', role: 'UX Designer', checkIn: '09:18 AM', checkOut: '06:00 PM', total: '8h 42m', date: '24 Oct 2023', device: 'MacBook Pro', location: 'Remote (BKC, Mumbai)', ip: '192.168.1.12', status: 'Late', avatar: 'https://i.pravatar.cc/150?u=priya', verif: 'Password + SMS', verifTime: '09:18:45' },
-        { id: 3, name: 'Rohan Gupta', role: 'Staff Eng', checkIn: '08:45 AM', checkOut: '05:30 PM', total: '8h 45m', date: '23 Oct 2023', device: 'Biometric Scanner', location: 'Mumbai HQ - Primary', ip: '192.168.1.8', status: 'On Time', avatar: 'https://i.pravatar.cc/150?u=rohan', verif: 'Biometric Verified', verifTime: '08:45:02' },
-        { id: 4, name: 'Ananya Iyer', role: 'Product Lead', checkIn: '09:05 AM', checkOut: '06:15 PM', total: '9h 10m', date: '23 Oct 2023', device: 'Google Pixel 7', location: 'Bengaluru Office', ip: '10.0.0.124', status: 'On Time', avatar: 'https://i.pravatar.cc/150?u=ananya', verif: 'Face ID Verified', verifTime: '09:05:33' },
-        { id: 5, name: 'Sneha Desai', role: 'HR Ops Specialist', checkIn: '09:00 AM', checkOut: '06:45 PM', total: '9h 45m', date: '22 Oct 2023', device: 'Web Dashboard', location: 'Mumbai HQ - Floor 1', ip: '192.168.1.55', status: 'On Time', avatar: 'https://ui-avatars.com/api/?name=Sneha+Desai&background=1e293b&color=fff', verif: 'MFA Verified', verifTime: '09:00:10' },
-    ]);
+  const filteredRecords = useMemo(() => {
+    return records.filter(rec =>
+      (rec.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       rec.role.toLowerCase().includes(searchQuery.toLowerCase())) &&
+      (activeFilter === 'All' || rec.status === activeFilter)
+    );
+  }, [searchQuery, records, activeFilter]);
 
-    const selectedRecord = useMemo(() =>
-        records.find(r => r.id === selectedRecordId) || records[0]
-        , [selectedRecordId, records]);
+  const selectedRecord = useMemo(() =>
+    records.find(r => r.id === selectedRecordId) || records[0]
+  , [selectedRecordId, records]);
 
-    // --- DYNAMIC FILTERING ---
-    const filteredRecords = useMemo(() => {
-        return records.filter(rec =>
-            (rec.name.toLowerCase().includes(searchQuery.toLowerCase()) || rec.ip.includes(searchQuery)) &&
-            (activeFilter === 'All' || rec.status === activeFilter)
-        );
-    }, [searchQuery, records, activeFilter]);
+  const handleExport = () => {
+    setIsExporting(true);
+    setTimeout(() => {
+      const csv = [
+        ['Name', 'Role', 'Date', 'Check In', 'Check Out', 'Duration', 'Status', 'Mode'].join(','),
+        ...filteredRecords.map(r =>
+          [r.name, r.role, r.date, r.checkIn, r.checkOut, r.duration, r.status, r.mode].map(v => `"${v}"`).join(',')
+        )
+      ].join('\n');
 
-    return (
-        <div className="flex flex-col h-[calc(100vh-140px)] w-full gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative mt-4">
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `attendance-${selectedDate}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setIsExporting(false);
+      showNotification('CSV exported successfully');
+    }, 800);
+  };
 
-            {/* Premium Notification */}
-            {notification && (
-                <div className="fixed top-24 right-8 z-[100] animate-in slide-in-from-right-8 fade-in flex items-center gap-3 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl border border-white/10">
-                    <BellRing size={20} className="text-primary-400" />
-                    <span className="text-sm font-bold tracking-tight">{notification}</span>
+  return (
+    <div className="flex flex-col h-[calc(100vh-120px)] w-full gap-6 pb-8 mt-4">
+
+      {/* Date Picker Modal */}
+      {showDatePicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setShowDatePicker(false)}></div>
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full relative z-10 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-slate-800">Select Date</h3>
+              <button onClick={() => setShowDatePicker(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={16} className="text-slate-400" />
+              </button>
+            </div>
+            <input
+              type="date"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+              value={selectedDate}
+              onChange={(e) => { setSelectedDate(e.target.value); setShowDatePicker(false); }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className="fixed top-24 right-8 z-50 flex items-center gap-3 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-xl">
+          <BellRing size={18} className="text-emerald-400" />
+          <span className="text-sm font-medium">{notification}</span>
+          <button onClick={() => setNotification(null)} className="ml-2 text-slate-400 hover:text-white"><X size={14} /></button>
+        </div>
+      )}
+
+      {/* Page Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-2 underline decoration-indigo-300 underline-offset-4 uppercase">Check-in Records</h1>
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-1 leading-none">View employee attendance logs and punch details</p>
+        </div>
+        <div className="flex items-center gap-3 self-start lg:self-center">
+          <div
+            onClick={() => setShowDatePicker(true)}
+            className="flex items-center gap-3 bg-white border border-slate-200 px-4 py-2.5 rounded-lg hover:border-slate-300 transition-colors cursor-pointer"
+          >
+            <Calendar size={18} className="text-slate-400" />
+            <span className="text-sm font-medium text-slate-700">{formatDateDisplay(selectedDate)}</span>
+            <ChevronDown size={16} className="text-slate-400" />
+          </div>
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200 disabled:opacity-50"
+          >
+            {isExporting ? (
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+            ) : (
+              <>
+                <Download size={18} />
+                Export
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden min-h-0">
+
+        {/* Left: Records Table */}
+        <div className="flex-1 flex flex-col min-w-0 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+
+          {/* Toolbar */}
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by name or role..."
+                className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 outline-none rounded-lg pl-9 pr-3 py-2 text-sm text-slate-700 transition-colors"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              {['All', 'Present', 'Late', 'Checked Out', 'Absent'].map(filter => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveFilter(filter)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    activeFilter === filter
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="flex-1 overflow-auto">
+            {loading ? (
+              <div className="flex items-center justify-center h-full text-slate-400">
+                <Loader2 size={24} className="animate-spin mr-2" />
+                <span className="text-sm">Loading records...</span>
+              </div>
+            ) : filteredRecords.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                <Clock size={32} className="mb-2 opacity-50" />
+                <p className="text-sm">No records found for this date</p>
+              </div>
+            ) : (
+              <table className="w-full text-left">
+                <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Employee</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Check In</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Check Out</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Duration</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Mode</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider w-10"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredRecords.map((rec) => (
+                    <tr
+                      key={rec.id}
+                      onClick={() => setSelectedRecordId(rec.id)}
+                      className={`cursor-pointer transition-colors ${
+                        selectedRecordId === rec.id ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={rec.avatar}
+                            alt=""
+                            className="w-9 h-9 rounded-full object-cover bg-slate-200"
+                            onError={(e) => { e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(rec.name)}&background=e2e8f0&color=475569`; }}
+                          />
+                          <div>
+                            <p className={`text-sm font-semibold ${selectedRecordId === rec.id ? 'text-indigo-700' : 'text-slate-800'}`}>
+                              {rec.name}
+                            </p>
+                            <p className="text-xs text-slate-500">{rec.role}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-sm text-slate-700">{rec.checkIn}</td>
+                      <td className="px-5 py-3 text-sm text-slate-700">{rec.checkOut}</td>
+                      <td className="px-5 py-3 text-sm text-slate-600">{rec.duration}</td>
+                      <td className="px-5 py-3">
+                        <span className={`inline-block px-2.5 py-1 text-xs font-medium rounded-md border ${STATUS_STYLES[rec.status] || STATUS_STYLES.Absent}`}>
+                          {rec.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-sm text-slate-600">{rec.mode}</td>
+                      <td className="px-5 py-3">
+                        <ArrowRight size={16} className={`transition-colors ${selectedRecordId === rec.id ? 'text-indigo-600' : 'text-slate-300'}`} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 text-xs text-slate-500">
+            Showing {filteredRecords.length} of {records.length} records
+          </div>
+        </div>
+
+        {/* Right: Detail Panel */}
+        {selectedRecord && (
+          <div className="w-full lg:w-[340px] flex flex-col gap-4 shrink-0 overflow-y-auto">
+
+            {/* Profile Card */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <div className="flex items-center gap-4 mb-4">
+                <img
+                  src={selectedRecord.avatar}
+                  alt=""
+                  className="w-14 h-14 rounded-full object-cover bg-slate-200"
+                  onError={(e) => { e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedRecord.name)}&background=e2e8f0&color=475569`; }}
+                />
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">{selectedRecord.name}</h3>
+                  <p className="text-xs text-slate-500">{selectedRecord.role}</p>
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Status</p>
+                  <span className={`inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded border ${STATUS_STYLES[selectedRecord.status] || STATUS_STYLES.Absent}`}>
+                    {selectedRecord.status}
+                  </span>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Work Mode</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-700">{selectedRecord.mode}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Time Details */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Time Details</h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <Clock size={14} />
+                    <span className="text-xs font-medium">Check In</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-800">{selectedRecord.checkIn}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <Clock size={14} />
+                    <span className="text-xs font-medium">Check Out</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-800">{selectedRecord.checkOut}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <Briefcase size={14} />
+                    <span className="text-xs font-medium">Duration</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-800">{selectedRecord.duration}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <Calendar size={14} />
+                    <span className="text-xs font-medium">Date</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-800">{selectedRecord.date}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Location & Device */}
+            {(selectedRecord.latitude || selectedRecord.longitude || selectedRecord.device !== '—') && (
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Location & Device</h4>
+                {selectedRecord.latitude && selectedRecord.longitude && (
+                  <div className="flex items-start gap-2">
+                    <MapPin size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-slate-400">Coordinates</p>
+                      <p className="text-sm font-mono text-slate-700">{selectedRecord.latitude.toFixed(6)}, {selectedRecord.longitude.toFixed(6)}</p>
+                    </div>
+                  </div>
+                )}
+                {selectedRecord.device !== '—' && (
+                  <div className="flex items-start gap-2">
+                    <Laptop size={14} className="text-slate-400 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs text-slate-400">Device</p>
+                      <p className="text-sm font-semibold text-slate-700">{selectedRecord.device}</p>
+                    </div>
+                  </div>
+                )}
+                {selectedRecord.isAway && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
+                    <Clock size={14} className="text-amber-600" />
+                    <span className="text-xs font-medium text-amber-700">Marked as away from office</span>
+                  </div>
+                )}
+              </div>
             )}
 
-            {/* Header & Main Controls */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0">
-                <div>
-                    <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-2">Check-in Diagnostic Center</h1>
-                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1 leading-none">Real-time enterprise verification & Employee log integrity</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => showNotification("Exporting high-fidelity audit trail...")}
-                        className="flex items-center gap-2 px-8 py-3 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 uppercase tracking-widest text-[10px]"
-                    >
-                        <Download size={16} />
-                        Export Audit Trail
-                    </button>
-                </div>
-            </div>
-
-            {/* Workspace Grid (Split Pane) */}
-            <div className="flex-1 flex flex-col lg:flex-row gap-8 overflow-hidden min-h-0">
-
-                {/* Left Column: High-Density Diagnostic List */}
-                <div className="flex-1 flex flex-col min-w-0 bg-white border border-slate-100 rounded-[44px] shadow-soft overflow-hidden">
-
-                    {/* Table Filter Hub */}
-                    <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between gap-4 bg-slate-50/30">
-                        <div className="relative group flex-1">
-                            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-hover:text-primary-500 transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Search employees, departments, or shifts..."
-                                className="w-full bg-white border border-slate-100 focus:border-primary-100 outline-none rounded-2xl pl-12 pr-4 py-3 text-xs font-black text-slate-600 transition-all shadow-sm uppercase tracking-tight"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => setActiveFilter('All')}
-                                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeFilter === 'All' ? 'bg-primary-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100'}`}
-                            >
-                                All
-                            </button>
-                            <button
-                                onClick={() => setActiveFilter('Late')}
-                                className={`px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeFilter === 'Late' ? 'bg-orange-500 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100'}`}
-                            >
-                                Late
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Table Content */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        <table className="w-full text-left table-fixed">
-                            <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-slate-100 shadow-sm">
-                                <tr>
-                                    <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Employee Member</th>
-                                    <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Date</th>
-                                    <th className="w-[120px] px-4 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                                    <th className="w-[80px] px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">#</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {filteredRecords.map((rec) => (
-                                    <tr
-                                        key={rec.id}
-                                        onClick={() => setSelectedRecordId(rec.id)}
-                                        className={`group cursor-pointer transition-all duration-300 ${selectedRecordId === rec.id ? 'bg-primary-50/50' : 'hover:bg-slate-50/50'}`}
-                                    >
-                                        <td className="px-8 py-6">
-                                            <div className="flex items-center gap-4">
-                                                <div className="relative">
-                                                    <img src={rec.avatar} className={`w-11 h-11 rounded-[16px] object-cover ring-2 transition-all ${selectedRecordId === rec.id ? 'ring-primary-500 shadow-xl' : 'ring-white'}`} alt="" />
-                                                    <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white ${rec.status === 'Late' ? 'bg-orange-500' : 'bg-green-500'}`}></div>
-                                                </div>
-                                                <div>
-                                                    <p className={`font-black tracking-tight leading-none mb-1 text-sm ${selectedRecordId === rec.id ? 'text-primary-700' : 'text-slate-800'}`}>{rec.name}</p>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest truncate">{rec.role}</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-6">
-                                            <p className="text-xs font-black text-slate-700">{rec.checkIn}</p>
-                                            <p className="text-[9px] text-slate-300 font-bold uppercase tracking-tighter mt-1">{rec.date}</p>
-                                        </td>
-                                        <td className="px-4 py-6">
-                                            <span className={`px-2 py-1 text-[9px] font-black rounded-lg border leading-none ${rec.status === 'Late' ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                                                {rec.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-8 py-6 text-right">
-                                            <div className={`p-2 rounded-xl transition-all ${selectedRecordId === rec.id ? 'bg-primary-600 text-white shadow-lg' : 'text-slate-200 group-hover:text-primary-300'}`}>
-                                                <ArrowRight size={16} />
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* Right Column: Deep Dive Diagnostic Panel (Perfection) */}
-                <div className="w-full lg:w-[450px] flex flex-col gap-8 shrink-0 animate-in slide-in-from-right-8 duration-700 overflow-y-auto no-scrollbar">
-
-                    {/* 1. Selected User Mini-Profile */}
-                    <div className="card-soft bg-white p-8 border-slate-100 shadow-soft text-center group">
-                        <div className="relative inline-block mb-6">
-                            <div className="w-32 h-32 rounded-[42px] overflow-hidden border-8 border-slate-50 shadow-2xl transition-transform group-hover:scale-105 duration-500">
-                                <img src={selectedRecord.avatar} className="w-full h-full object-cover" alt="" />
-                            </div>
-                            <div className="absolute top-0 right-0 p-3 bg-primary-600 text-white rounded-full shadow-2xl animate-pulse">
-                                <ShieldCheck size={20} />
-                            </div>
-                        </div>
-                        <h3 className="text-3xl font-black text-slate-800 tracking-tight leading-none mb-2">{selectedRecord.name}</h3>
-                        <p className="text-primary-600 font-bold text-[10px] uppercase tracking-[0.2em] leading-none">{selectedRecord.role}</p>
-
-                        <div className="grid grid-cols-2 gap-4 mt-8 pt-8 border-t border-slate-50">
-                            <div className="p-4 bg-slate-50 rounded-[28px] border border-slate-100">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Verify Method</p>
-                                <p className="text-xs font-black text-slate-800">{selectedRecord.verif}</p>
-                            </div>
-                            <div className="p-4 bg-slate-50 rounded-[28px] border border-slate-100">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Audit Time</p>
-                                <p className="text-xs font-black text-slate-800">{selectedRecord.verifTime}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 2. Geo-Diagnostic Widget */}
-                    <div className="card-soft bg-white p-8 border-slate-100 shadow-soft space-y-6">
-                        <div className="flex items-center justify-between">
-                            <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.2em]">Geo-Verification Diagnostics</h4>
-                            <Globe size={16} className="text-primary-400" />
-                        </div>
-                        <div className="aspect-video bg-slate-50 rounded-[32px] border border-slate-100 relative overflow-hidden group/map">
-                            <div className="absolute inset-0 bg-[url('https://maps.googleapis.com/maps/api/staticmap?center=19.076,72.877&zoom=14&size=600x300&sensor=false')] bg-cover opacity-60 grayscale group-hover/map:grayscale-0 transition-all duration-700"></div>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="relative">
-                                    <div className="absolute w-12 h-12 bg-primary-500/20 rounded-full animate-ping"></div>
-                                    <MapPin size={32} className="text-primary-600 relative z-10 drop-shadow-2xl" />
-                                </div>
-                            </div>
-                            <div className="absolute bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md p-3 rounded-2xl border border-white/50 shadow-xl">
-                                <div className="flex items-center gap-3">
-                                    <MapPin size={14} className="text-primary-500" />
-                                    <p className="text-[10px] font-black text-slate-800 truncate">{selectedRecord.location}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 3. Device Fingerprint & IP Hub */}
-                    <div className="card-soft bg-slate-900 border-none text-white p-8 shadow-2xl relative overflow-hidden">
-                        <div className="relative z-10 space-y-6">
-                            <div className="flex items-center justify-between opacity-40">
-                                <h4 className="text-[10px] font-black uppercase tracking-widest">Network Analytics</h4>
-                                <Activity size={16} strokeWidth={2.5} />
-                            </div>
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        {selectedRecord.device.includes('iPhone') ? <Smartphone size={18} className="text-indigo-400" /> : <Laptop size={18} className="text-indigo-400" />}
-                                        <span className="text-sm font-bold opacity-80">{selectedRecord.device}</span>
-                                    </div>
-                                    <span className="text-[10px] font-black text-indigo-400">Log ID: #62AQ5</span>
-                                </div>
-                                <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-1">
-                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Source IP Intelligence</p>
-                                    <p className="text-sm font-mono font-bold text-primary-400 truncate">{selectedRecord.ip}</p>
-                                </div>
-                            </div>
-                        </div>
-                        {/* Background Glow */}
-                        <div className="absolute top-0 right-0 w-48 h-48 bg-primary-600/10 rounded-full blur-[80px] -mr-24 -mt-24"></div>
-                    </div>
-
-                    {/* 4. Mini Audit Timeline */}
-                    <div className="px-8">
-                        <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Verification History Log</h4>
-                        <div className="space-y-6 relative ml-2">
-                            <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-slate-100 -ml-0.5"></div>
-                            {[
-                                { label: 'System Check-in', time: selectedRecord.checkIn, status: 'Success' },
-                                { label: 'Platform Handshake', time: '08:52:08 AM', status: 'Success' },
-                                { label: 'Location Pin-drop', time: '08:52:05 AM', status: 'Verified' },
-                            ].map((t, i) => (
-                                <div key={i} className="flex items-center gap-4 relative">
-                                    <div className="w-2 h-2 rounded-full bg-slate-200 border-2 border-white shadow-sm -ml-[5px] relative z-10 group-hover:bg-primary-500 transition-colors"></div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-[11px] font-bold text-slate-800">{t.label}</p>
-                                            <span className="text-[9px] font-black text-green-500 uppercase">{t.status}</span>
-                                        </div>
-                                        <p className="text-[9px] text-slate-400 font-bold">{t.time}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-
-            {/* Footer System Diagnostics */}
-            <div className="shrink-0 flex items-center justify-between px-10 py-5 bg-slate-50 border border-slate-100 rounded-[32px] text-slate-400 shadow-inner">
-                <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-sm animate-pulse"></div>
-                        <span className="text-[10px] font-black uppercase tracking-widest">Identity Pipeline: ACTIVE</span>
-                    </div>
-                    <div className="h-4 w-px bg-slate-200"></div>
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Verified {records.length} enterprise nodes across H1 2023</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button className="p-2 hover:text-slate-800 transition-colors"><Info size={16} /></button>
-                    <button className="p-2 hover:text-slate-800 transition-colors"><Activity size={16} /></button>
-                </div>
-            </div>
-
-        </div>
-    );
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export default CheckInRecords;

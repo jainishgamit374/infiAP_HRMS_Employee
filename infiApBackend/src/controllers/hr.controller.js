@@ -240,19 +240,20 @@ exports.getAttendanceDailyOverview = async (req, res) => {
     try {
         const { date } = req.query;
 
-        // Parse date as local date to avoid timezone issues
+        // Parse date in UTC to avoid timezone mismatches
         let targetDate;
         if (date) {
             const [year, month, day] = date.split('-').map(Number);
-            targetDate = new Date(year, month - 1, day); // Local time
+            targetDate = new Date(Date.UTC(year, month - 1, day));
         } else {
-            targetDate = new Date();
+            const now = new Date();
+            targetDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
         }
 
         const startOfDay = new Date(targetDate);
-        startOfDay.setHours(0, 0, 0, 0);
+        startOfDay.setUTCHours(0, 0, 0, 0);
         const endOfDay = new Date(targetDate);
-        endOfDay.setHours(23, 59, 59, 999);
+        endOfDay.setUTCHours(23, 59, 59, 999);
 
         const OFFICE_START = 9; // 9 AM — configurable
         // Don't filter by role strictly - include all users with punch records
@@ -309,46 +310,68 @@ exports.getCheckInRecords = async (req, res) => {
     try {
         const { date, department, page = 1, limit = 30 } = req.query;
 
-        // Parse date as local date to avoid timezone issues
+        // Parse date in UTC to avoid timezone mismatches
         let targetDate;
         if (date) {
             const [year, month, day] = date.split('-').map(Number);
-            targetDate = new Date(year, month - 1, day); // Local time
+            targetDate = new Date(Date.UTC(year, month - 1, day));
         } else {
-            targetDate = new Date();
+            const now = new Date();
+            targetDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
         }
 
         const startOfDay = new Date(targetDate);
-        startOfDay.setHours(0, 0, 0, 0);
+        startOfDay.setUTCHours(0, 0, 0, 0);
         const endOfDay = new Date(targetDate);
-        endOfDay.setHours(23, 59, 59, 999);
+        endOfDay.setUTCHours(23, 59, 59, 999);
 
         const OFFICE_START = 9;
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
-        // Get all employees - don't filter by role strictly, include all non-admin roles
+        // Get all employees
         const empFilter = {};
         if (department) empFilter.department = department;
         const employees = await User.find(empFilter)
             .select("name email employeeId department designation profileImage")
+            .lean()
             .skip(skip).limit(parseInt(limit));
         const totalEmps = await User.countDocuments(empFilter);
 
-        // Get today's punches
+        // Get today's punches (lean for plain objects)
         const todayPunches = await Punch.find({
             PunchTime: { $gte: startOfDay, $lte: endOfDay }
-        });
+        }).lean();
+
+        console.log('getCheckInRecords — date:', date, 'startOfDay:', startOfDay.toISOString(), 'endOfDay:', endOfDay.toISOString());
+        console.log('getCheckInRecords — total punches found:', todayPunches.length);
+        console.log('getCheckInRecords — total employees:', employees.length);
+        if (todayPunches.length > 0) {
+            console.log('getCheckInRecords — sample punch:', todayPunches[0]);
+        }
 
         // Build records per employee
         const records = employees.map(emp => {
-            const empPunches = todayPunches.filter(p => p.userId.toString() === emp._id.toString());
+            const empIdStr = emp._id.toString();
+            const empPunches = todayPunches.filter(p => {
+                const punchUserId = p.userId ? p.userId.toString() : '';
+                return punchUserId === empIdStr;
+            });
+
+            console.log(`Employee ${emp.name} (${empIdStr}) has ${empPunches.length} punches`);
+
             const punchIn = empPunches.find(p => p.PunchType === 1);
             const punchOut = empPunches.filter(p => p.PunchType === 2).pop(); // last out
+
+            // Use any available punch for metadata (prefer in-punch, fallback to out-punch)
+            const anyPunch = punchIn || punchOut;
+            const punchMode = anyPunch ? anyPunch.WorkMode : null;
 
             let status = "Absent";
             if (punchIn) {
                 const inHour = new Date(punchIn.PunchTime).getHours();
                 status = inHour >= OFFICE_START + 1 ? "Late" : "Present";
+            } else if (punchOut) {
+                status = "Checked Out";
             }
 
             return {
@@ -359,10 +382,16 @@ exports.getCheckInRecords = async (req, res) => {
                 status,
                 inTime: punchIn ? punchIn.PunchTime : null,
                 outTime: punchOut ? punchOut.PunchTime : null,
-                workMode: punchIn ? punchIn.WorkMode : null, // 1=Office, 2=WFH, 3=Meeting, 4=Offside
-                profileImage: emp.profileImage || null
+                workMode: punchMode,
+                profileImage: emp.profileImage || null,
+                latitude: anyPunch ? anyPunch.Latitude : null,
+                longitude: anyPunch ? anyPunch.Longitude : null,
+                isAway: anyPunch ? anyPunch.IsAway : false,
+                device: anyPunch ? (punchMode === 2 ? 'Remote Device' : punchMode === 3 ? 'Mobile App' : punchMode === 4 ? 'Offsite Tracker' : 'Office Terminal') : null
             };
         });
+
+        console.log('getCheckInRecords — returning records:', records);
 
         res.status(200).json({
             success: true,
@@ -370,6 +399,107 @@ exports.getCheckInRecords = async (req, res) => {
             pagination: { total: totalEmps, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(totalEmps / parseInt(limit)) }
         });
     } catch (error) {
+        console.error('getCheckInRecords error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// 3. Monthly Attendance Grid (per-employee daily status)
+exports.getMonthlyAttendance = async (req, res) => {
+    try {
+        const { year, month, department } = req.query;
+        const now = new Date();
+        const y = year ? parseInt(year) : now.getFullYear();
+        const m = month ? parseInt(month) - 1 : now.getMonth();
+
+        const startOfMonth = new Date(y, m, 1);
+        const endOfMonth = new Date(y, m + 1, 0, 23, 59, 59, 999);
+        const daysInMonth = endOfMonth.getDate();
+        const OFFICE_START = 9;
+
+        const empFilter = { role: { $nin: ["main_admin", "superadmin"] } };
+        if (department) empFilter.department = department;
+
+        const employees = await User.find(empFilter)
+            .select("name employeeId department designation profileImage")
+            .lean();
+
+        const punches = await Punch.find({
+            PunchType: 1,
+            PunchTime: { $gte: startOfMonth, $lte: endOfMonth }
+        }).lean();
+
+        const holidays = await Holiday.find({
+            date: { $gte: startOfMonth, $lte: endOfMonth }
+        }).lean();
+
+        const holidayDates = new Set(holidays.map(h => new Date(h.date).toDateString()));
+
+        const records = employees.map(emp => {
+            const empIdStr = emp._id.toString();
+            const empPunches = punches.filter(p => {
+                const pUid = p.userId ? p.userId.toString() : '';
+                return pUid === empIdStr;
+            });
+
+            const punchByDay = new Map();
+            empPunches.forEach(p => {
+                const d = new Date(p.PunchTime);
+                const day = d.getDate();
+                if (!punchByDay.has(day) || d < new Date(punchByDay.get(day).PunchTime)) {
+                    punchByDay.set(day, p);
+                }
+            });
+
+            const history = [];
+            const summary = { P: 0, A: 0, L: 0, W: 0, H: 0 };
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(y, m, day);
+                const dayOfWeek = date.getDay();
+
+                if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    history.push('W');
+                    summary.W++;
+                } else if (holidayDates.has(date.toDateString())) {
+                    history.push('H');
+                    summary.H++;
+                } else {
+                    const punch = punchByDay.get(day);
+                    if (!punch) {
+                        history.push('A');
+                        summary.A++;
+                    } else {
+                        const punchHour = new Date(punch.PunchTime).getHours();
+                        if (punchHour >= OFFICE_START + 1) {
+                            history.push('L');
+                            summary.L++;
+                        } else {
+                            history.push('P');
+                            summary.P++;
+                        }
+                    }
+                }
+            }
+
+            return {
+                id: emp._id,
+                employeeId: emp.employeeId,
+                name: emp.name,
+                designation: emp.designation || 'Employee',
+                department: emp.department || '—',
+                avatar: emp.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=1e293b&color=fff`,
+                history,
+                summary
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            data: { year: y, month: m + 1, daysInMonth, records }
+        });
+    } catch (error) {
+        console.error('getMonthlyAttendance error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

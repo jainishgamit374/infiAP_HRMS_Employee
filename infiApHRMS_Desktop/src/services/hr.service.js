@@ -28,6 +28,9 @@ export const hrService = {
   getCheckInRecords: (params) =>
     apiClient.get("/hr/attendance/records", { params }).then(r => r.data),
 
+  getMonthlyAttendance: (year, month, department) =>
+    apiClient.get("/hr/attendance/monthly", { params: { year, month, department } }).then(r => r.data),
+
   submitCorrectionRequest: (data) =>
     apiClient.post("/hr/attendance/correction/submit", data).then(r => r.data),
 

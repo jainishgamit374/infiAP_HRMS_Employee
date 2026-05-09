@@ -23,6 +23,7 @@ router.get("/employees/:id/profile", hrController.getEmployeeProfile);
 // -> Attendance (Detailed)
 router.get("/attendance/daily-overview", hrController.getAttendanceDailyOverview);
 router.get("/attendance/records", hrController.getCheckInRecords);
+router.get("/attendance/monthly", hrController.getMonthlyAttendance);
 router.post("/attendance/correction/submit", hrController.submitCorrectionRequest);
 router.get("/attendance/correction/requests", hrController.getCorrectionRequests);
 router.put("/attendance/correction/review", verifyRole(["hr", "admin", "superadmin"]), hrController.reviewCorrectionRequest);
