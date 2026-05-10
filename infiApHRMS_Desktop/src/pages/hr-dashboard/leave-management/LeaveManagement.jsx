@@ -33,7 +33,7 @@ import {
   XAxis
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-import { getLeaveStats, getPendingDetailedLeaves, getTodayLeaves } from '../../../services/hrApi';
+import { getLeaveStats, getLeaveRequests, getPendingDetailedLeaves, getTodayLeaves } from '../../../services/hrApi';
 
 const LeaveManagement = () => {
   const navigate = useNavigate();
@@ -52,68 +52,63 @@ const LeaveManagement = () => {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const toggleRule = (id) => {
-    setComplianceRules(prev => prev.map(r => r.id === id ? { ...r, active: !r.active } : r));
-    showNotification("Global policy node updated.");
-  };
-
-  const getTabData = () => {
-    const data = {
-      'Pending': [
-        { title: 'Sarah Chen - Sick Leave', date: 'Oct 12', category: 'Urgent', status: 'Priority', size: '3 Days', path: '/leave/approval', icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50' },
-        { title: 'Marcus Thompson - Annual', date: 'Oct 20', category: 'Vacation', status: 'Required', size: '6 Days', path: '/leave/approval', icon: Calendar, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-      ],
-      'Archive': [
-        { title: 'Arjun Mehta - Annual', date: 'Nov 12', category: 'History', status: 'Locked', size: 'Approved', path: '/leave/history', icon: History, color: 'text-slate-600', bg: 'bg-slate-50' },
-        { title: 'Priya Sharma - Sick', date: 'Oct 28', category: 'History', status: 'Locked', size: 'Approved', path: '/leave/history', icon: History, color: 'text-slate-600', bg: 'bg-slate-50' },
-      ],
-      'Analytics': [
-        { title: 'Q3 Departmental Audit', date: 'Quarterly', category: 'Analytics', status: 'Generated', size: '15 Page PDF', path: '/leave/history', icon: PieChart, color: 'text-primary-600', bg: 'bg-primary-50' },
-        { title: 'Absence Trend Report', date: 'Monthly', category: 'Analytics', status: 'Ready', size: 'Excel Data', path: '/leave/history', icon: Activity, color: 'text-primary-600', bg: 'bg-primary-50' },
-      ],
-      'Active': [
-        { title: 'Leave Request Audit', date: 'Oct 24', category: 'Requests', status: 'Priority', size: '18 Pending', path: '/leave/requests', icon: ClipboardList, color: 'text-primary-600', bg: 'bg-primary-50' },
-        { title: 'Leadership Approvals', date: 'Wk 42', category: 'Approvals', status: 'Required', size: '12 Items', path: '/leave/approval', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-        { title: 'Compliance Engine', date: 'FY 2024', category: 'Legal', status: 'Updated', size: 'v4.2 Active', path: '/leave/requests', icon: ShieldCheck, color: 'text-orange-600', bg: 'bg-orange-50' },
-      ]
-    };
-    return data[activeTab] || data['Active'];
-  };
-
-  const trendData = [
-    { name: 'Mon', value: 4 }, { name: 'Tue', value: 7 }, { name: 'Wed', value: 5 },
-    { name: 'Thu', value: 8 }, { name: 'Fri', value: 12 }, { name: 'Sat', value: 2 }, { name: 'Sun', value: 1 }
-  ];
-
   const [statCards, setStatCards] = useState([
-    { label: 'Pending', value: '—', color: 'text-orange-500', icon: Clock, filter: 'Pending' },
-    { label: 'Approved', value: '—', color: 'text-emerald-500', icon: CheckCircle2, filter: 'Approved' },
-    { label: 'Rejected', value: '—', color: 'text-rose-500', icon: XCircle, filter: 'Rejected' },
-    { label: 'On Leave Today', value: '—', color: 'text-primary-500', icon: UserCheck, filter: 'All Requests' },
+    { label: 'Pending', value: '0', color: 'text-orange-500', icon: Clock, filter: 'Pending' },
+    { label: 'Approved', value: '0', color: 'text-emerald-500', icon: CheckCircle2, filter: 'Approved' },
+    { label: 'Rejected', value: '0', color: 'text-rose-500', icon: XCircle, filter: 'Rejected' },
+    { label: 'On Leave Today', value: '0', color: 'text-primary-500', icon: UserCheck, filter: 'All Requests' },
   ]);
 
-  // Fetch leave stats from API
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [currentActions, setCurrentActions] = useState([]);
+
+  // Fetch leave stats and requests from API
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchLeaveData = async () => {
       try {
-        const res = await getLeaveStats();
-        const data = res.data?.data;
-        if (data) {
+        setLoading(true);
+        const [statsRes, requestsRes] = await Promise.all([
+          getLeaveStats(),
+          getLeaveRequests()
+        ]);
+
+        // Update stats
+        const stats = statsRes.data?.data || statsRes.data;
+        if (stats) {
           setStatCards([
-            { label: 'Pending', value: String(data.pending || 0), color: 'text-orange-500', icon: Clock, filter: 'Pending' },
-            { label: 'Approved', value: String(data.approved || 0), color: 'text-emerald-500', icon: CheckCircle2, filter: 'Approved' },
-            { label: 'Rejected', value: String(data.rejected || 0), color: 'text-rose-500', icon: XCircle, filter: 'Rejected' },
-            { label: 'On Leave Today', value: String(data.onLeaveToday || 0), color: 'text-primary-500', icon: UserCheck, filter: 'All Requests' },
+            { label: 'Pending', value: String(stats.pending || 0), color: 'text-orange-500', icon: Clock, filter: 'Pending' },
+            { label: 'Approved', value: String(stats.approved || 0), color: 'text-emerald-500', icon: CheckCircle2, filter: 'Approved' },
+            { label: 'Rejected', value: String(stats.rejected || 0), color: 'text-rose-500', icon: XCircle, filter: 'Rejected' },
+            { label: 'On Leave Today', value: String(stats.onLeaveToday || 0), color: 'text-primary-500', icon: UserCheck, filter: 'All Requests' },
           ]);
         }
+
+        // Update requests from API
+        const requests = requestsRes.data?.data?.requests || requestsRes.data?.data || requestsRes.data || [];
+        setLeaveRequests(requests);
+
+        // Map requests to actions
+        const actions = requests.slice(0, 5).map(req => ({
+          title: `${req.employeeName || req.employeeId || 'Employee'} - ${req.leaveType || 'Leave'}`,
+          date: req.startDate ? new Date(req.startDate).toLocaleDateString() : 'N/A',
+          category: req.leaveType || 'Leave',
+          status: req.status || 'Pending',
+          size: req.days || `${req.totalDays || 1} Day(s)`,
+          path: '/leave/approval',
+          icon: Clock,
+          color: req.status === 'Approved' ? 'text-emerald-600' : 'text-orange-600',
+          bg: req.status === 'Approved' ? 'bg-emerald-50' : 'bg-orange-50'
+        }));
+        setCurrentActions(actions);
       } catch (err) {
-        console.error('Failed to fetch leave stats:', err);
+        console.error('Failed to fetch leave data:', err);
+      } finally {
+        setLoading(false);
       }
     };
-    fetchStats();
+    fetchLeaveData();
   }, []);
-
-  const currentActions = getTabData();
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] w-full gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative pt-4 overflow-hidden">

@@ -43,10 +43,7 @@ const ResignationRequests = () => {
             setRequests(formatted);
         } catch (err) {
             console.error('Failed to fetch resignation requests:', err);
-            setRequests([
-                { id: 'RES-081', name: 'Rahul Sharma', dept: 'Engineering', role: 'Senior Developer', noticeDate: 'Oct 24, 2023', lastDay: 'Nov 24, 2023', status: 'Pending', risk: 'High' },
-                { id: 'RES-082', name: 'Priya Patel', dept: 'Marketing', role: 'Brand Manager', noticeDate: 'Oct 22, 2023', lastDay: 'Dec 11, 2023', status: 'Pending', risk: 'Medium' },
-            ]);
+            setRequests([]);
         } finally {
             setLoading(false);
         }

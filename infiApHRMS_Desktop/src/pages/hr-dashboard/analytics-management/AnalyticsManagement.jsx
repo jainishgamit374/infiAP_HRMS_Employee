@@ -46,23 +46,34 @@ const AnalyticsManagement = () => {
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [multiData, setMultiData] = useState([
-    { name: 'Mon', p: 4000, a: 2400 },
-    { name: 'Tue', p: 3000, a: 1398 },
-    { name: 'Wed', p: 2000, a: 9800 },
-    { name: 'Thu', p: 2780, a: 3908 },
-    { name: 'Fri', p: 1890, a: 4800 },
-    { name: 'Sat', p: 2390, a: 3800 },
-    { name: 'Sun', p: 3490, a: 4300 },
+    { name: 'Mon', p: 0, a: 0 },
+    { name: 'Tue', p: 0, a: 0 },
+    { name: 'Wed', p: 0, a: 0 },
+    { name: 'Thu', p: 0, a: 0 },
+    { name: 'Fri', p: 0, a: 0 },
+    { name: 'Sat', p: 0, a: 0 },
+    { name: 'Sun', p: 0, a: 0 },
   ]);
+   const [analyticsActions, setAnalyticsActions] = useState([
+      { title: 'Employee Lifecycle Report', date: 'FY 2024', category: 'Strategic', status: 'Ready', size: 'v1.4', path: '/analytics/employees', icon: Globe, color: 'text-primary-600', bg: 'bg-primary-50' },
+      { title: 'Attendance Correlation', date: 'Oct 2023', category: 'Operational', status: 'Priority', size: 'Live Sync', path: '/analytics/attendance', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+      { title: 'Performance Forecast', date: 'Q4 2024', category: 'Predictive', status: 'AI Active', size: 'Diagnostic', path: '/analytics/performance', icon: BrainCircuit, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+      { title: 'Master Data Integrity', date: 'Daily', category: 'Database', status: 'Healthy', size: '1.2 TB', path: '/analytics/data', icon: Database, color: 'text-slate-600', bg: 'bg-slate-50' },
+   ]);
+  const [loading, setLoading] = useState(true);
 
   const fetchAnalytics = async () => {
     try {
-      const [attendanceRes, performanceRes] = await Promise.all([
+      setLoading(true);
+      const [reportRes, attendanceRes, performanceRes] = await Promise.all([
+        getAnalyticsReport(),
         getAnalyticsAttendance(),
         getAnalyticsPerformance()
       ]);
-      const attendance = attendanceRes.data?.data;
-      const performance = performanceRes.data?.data;
+      const report = reportRes.data?.data || reportRes.data || {};
+      const attendance = attendanceRes.data?.data || [];
+      const performance = performanceRes.data?.data || [];
+
       if (Array.isArray(attendance) && attendance.length > 0) {
         const merged = attendance.map((item, i) => ({
           name: item.day || item.label || `D${i+1}`,
@@ -71,8 +82,18 @@ const AnalyticsManagement = () => {
         }));
         setMultiData(merged);
       }
+
+      // Map analytics to actions
+      const actions = [
+        { title: 'Employee Data Report', date: 'Current', category: 'Analytics', status: 'Ready', size: 'View', path: '/analytics/employees', icon: Activity, color: 'text-primary-600', bg: 'bg-primary-50' },
+        { title: 'Attendance Analytics', date: 'Current', category: 'Analytics', status: 'Ready', size: 'View', path: '/analytics/attendance', icon: Clock, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { title: 'Performance Insights', date: 'Current', category: 'Analytics', status: 'Ready', size: 'View', path: '/analytics/performance', icon: TrendingUp, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+      ];
+      setAnalyticsActions(actions);
     } catch (err) {
-      console.error('Analytics data fetch failed (using defaults):', err);
+      console.error('Analytics data fetch failed:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -84,13 +105,6 @@ const AnalyticsManagement = () => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
-
-  const analyticsActions = [
-    { title: 'Employee Lifecycle Report', date: 'FY 2024', category: 'Strategic', status: 'Ready', size: 'v1.4', path: '/analytics/employees', icon: Globe, color: 'text-primary-600', bg: 'bg-primary-50' },
-    { title: 'Attendance Correlation', date: 'Oct 2023', category: 'Operational', status: 'Priority', size: 'Live Sync', path: '/analytics/attendance', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { title: 'Performance Forecast', date: 'Q4 2024', category: 'Predictive', status: 'AI Active', size: 'Diagnostic', path: '/analytics/performance', icon: BrainCircuit, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { title: 'Master Data Integrity', date: 'Daily', category: 'Database', status: 'Healthy', size: '1.2 TB', path: '/analytics/data', icon: Database, color: 'text-slate-600', bg: 'bg-slate-50' },
-  ];
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] w-full gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative pt-4 overflow-hidden">
       

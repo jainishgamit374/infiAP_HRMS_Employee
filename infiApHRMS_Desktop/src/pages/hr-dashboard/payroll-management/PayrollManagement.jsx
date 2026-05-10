@@ -34,34 +34,67 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { getSalaryList, getPayroll } from '../../../services/hrApi';
 
-// Workaround for missing icons in module scope
-const Banknote = (props) => <CreditCard {...props} />;
-const Receipt = (props) => <FileText {...props} />;
-const ShieldCheck = (props) => <CheckCircle2 {...props} />;
-
 const PayrollManagement = () => {
   const navigate = useNavigate();
   const [notification, setNotification] = useState(null);
   const [activeTab, setActiveTab] = useState('Monthly');
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [payrollData, setPayrollData] = useState([]);
+  const [payloadActions, setPayloadActions] = useState([]);
+  const [expenseData, setExpenseData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const showNotification = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const payloadActions = [
-    { title: 'Salary Disbursement', date: 'Oct 28', category: 'Processing', status: 'Priority', size: 'Pending', path: '/payroll/salary', icon: Banknote, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { title: 'Tax Compliance Audit', date: 'Q3 2023', category: 'Compliance', status: 'Ready', size: 'Verified', path: '/payroll/tax', icon: ShieldCheck, color: 'text-primary-600', bg: 'bg-primary-50' },
-    { title: 'Payslip Generation', date: 'Wk 42', category: 'Documents', status: 'Open', size: '1,420 Items', path: '/payroll/payslips', icon: Receipt, iconColor: 'text-orange-600', bg: 'bg-orange-50' },
-    { title: 'Expense Reimbursement', date: 'Oct 15', category: 'Internal', status: 'Review', size: '12 Claims', path: '/payroll/reimbursement', icon: Wallet, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-  ];
+  useEffect(() => {
+    const fetchPayrollData = async () => {
+      try {
+        setLoading(true);
+        const [salaryRes] = await Promise.all([
+          getSalaryList()
+        ]);
 
-  const expenseData = [
-    { name: 'Eng', value: 450000 }, { name: 'Prod', value: 320000 }, { name: 'Ops', value: 210000 },
-    { name: 'Mark', value: 180000 }, { name: 'HR', value: 95000 }, { name: 'Sales', value: 280000 }
-  ];
+        const salaryList = salaryRes.data?.data || salaryRes.data || [];
+        setPayrollData(salaryList);
+
+        // Map to actions
+        const actions = salaryList.slice(0, 4).map(item => ({
+          title: `${item.employeeName || item.name || 'Employee'} - Salary`,
+          date: item.month ? `${item.year}-${String(item.month).padStart(2, '0')}` : 'Current',
+          category: 'Processing',
+          status: item.status || 'Pending',
+          size: item.netSalary ? `$${item.netSalary.toLocaleString()}` : 'Pending',
+          path: '/payroll/salary',
+          icon: CreditCard,
+          color: item.status === 'Processed' ? 'text-emerald-600' : 'text-orange-600',
+          bg: item.status === 'Processed' ? 'bg-emerald-50' : 'bg-orange-50'
+        }));
+        setPayloadActions(actions);
+
+        // Department expense breakdown
+        const deptExpenses = salaryList.reduce((acc, item) => {
+          const dept = item.department || 'Other';
+          acc[dept] = (acc[dept] || 0) + (item.netSalary || item.salary || 0);
+          return acc;
+        }, {});
+
+        const mapped = Object.entries(deptExpenses).map(([name, value]) => ({ name, value }));
+        setExpenseData(mapped.length ? mapped : [
+          { name: 'Eng', value: 0 }, { name: 'Prod', value: 0 }, { name: 'Ops', value: 0 },
+          { name: 'Mark', value: 0 }, { name: 'HR', value: 0 }, { name: 'Sales', value: 0 }
+        ]);
+      } catch (err) {
+        console.error('Failed to fetch payroll data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPayrollData();
+  }, []);
 
   const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
 

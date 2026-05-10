@@ -1,9 +1,20 @@
 // Role-Based Access Control
 const verifyRole = (roles) => {
     return (req, res, next) => {
-        const role = req.user?.role === "main_admin" ? "superadmin" : req.user?.role;
+        let role = req.user?.role || "";
 
-        if (req.user && role) {
+        // Normalize role names for comparison
+        if (role === "main_admin" || role === "Main Admin" || role === "main admin") {
+            role = "superadmin";
+        } else if (role === "admin") {
+            role = "admin";
+        } else if (role === "hr") {
+            role = "hr";
+        } else if (role === "employee") {
+            role = "employee";
+        }
+
+        if (req.user) {
             req.user.role = role;
         }
 

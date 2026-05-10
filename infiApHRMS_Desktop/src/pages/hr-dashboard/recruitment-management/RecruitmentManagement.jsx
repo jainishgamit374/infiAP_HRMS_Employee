@@ -42,52 +42,26 @@ import { getCandidateTracking, getRecruitmentJobs } from '../../../services/hrAp
 
 const RecruitmentManagement = () => {
   const navigate = useNavigate();
-  const { jobs, totals: jobTotals } = useJobContext();
+  const { totals: jobTotals } = useJobContext();
   const [notification, setNotification] = useState(null);
   const [activeTab, setActiveTab] = useState('Active');
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
    const [searchQuery, setSearchQuery] = useState('');
    const [pipelineData, setPipelineData] = useState([
-      { name: 'Applied', value: 120 },
-      { name: 'Screening', value: 85 },
-      { name: 'Technical', value: 42 },
-      { name: 'Leadership', value: 18 },
-      { name: 'Offer', value: 4 }
+      { name: 'Applied', value: 0 },
+      { name: 'Screening', value: 0 },
+      { name: 'Technical', value: 0 },
+      { name: 'Leadership', value: 0 },
+      { name: 'Offer', value: 0 }
    ]);
-   const [applicantTotal, setApplicantTotal] = useState(jobTotals.totalApplicants || 0);
+   const [applicantTotal, setApplicantTotal] = useState(0);
+   const [jobs, setJobs] = useState([]);
+   const [currentActions, setCurrentActions] = useState([]);
 
   const showNotification = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
-
-  const getTabData = () => {
-    switch (activeTab) {
-      case 'Review':
-        return [
-          { title: 'Sarah Chen - Final Review', date: 'Today', category: 'Product', status: 'Priority', size: 'Designer', path: '/recruitment/applications', icon: ShieldCheck, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { title: 'Marcus Thompson - Screening', date: 'Today', category: 'Sales', status: 'Required', size: 'Account Exec', path: '/recruitment/applications', icon: Clock, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-        ];
-      case 'History':
-        return [
-          { title: 'Engineering Cohort Q3', date: 'Sep 2023', category: 'Archive', status: 'Locked', size: '12 Hires', path: '/recruitment/candidates', icon: Users, color: 'text-slate-600', bg: 'bg-slate-50' },
-        ];
-      case 'Archives':
-        return [
-          { title: 'Talent Pool 2022', date: 'Dec 2022', category: 'Strategic', status: 'Cold', size: '840 Nodes', path: '/recruitment/candidates', icon: Target, color: 'text-slate-400', bg: 'bg-slate-50' },
-        ];
-      default: // Active
-        return [
-          { title: 'Job Postings', date: 'Active', category: 'Recruit', status: 'Live', size: `${jobTotals.activeCount} Active`, path: '/recruitment/active-jobs', icon: Briefcase, color: 'text-primary-600', bg: 'bg-primary-50' },
-          { title: 'Candidate Pipeline', date: 'Oct 2023', category: 'Applicants', status: 'Priority', size: '348 Active', path: '/recruitment/candidates', icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-          { title: 'Hiring Applications', date: 'Wk 42', category: 'Review', status: 'Required', size: '12 Direct', path: '/recruitment/applications', icon: ClipboardList, color: 'text-primary-600', bg: 'bg-primary-50' },
-          { title: 'Interview Scheduling', date: 'Today', category: 'Operations', status: 'Live', size: '8 Slots', path: '/recruitment/interviews', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50' },
-          { title: 'Talent Sourcing Audit', date: 'FY 2024', category: 'Strategic', status: 'Ready', size: 'Verified', path: '/recruitment/candidates', icon: Target, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-        ];
-    }
-  };
-
-  const currentActions = getTabData();
 
    useEffect(() => {
       let isMounted = true;
@@ -100,7 +74,8 @@ const RecruitmentManagement = () => {
             ]);
 
             const candidates = Array.isArray(candidateRes.data?.data) ? candidateRes.data.data : [];
-            const jobs = Array.isArray(jobRes.data?.data) ? jobRes.data.data : [];
+            const jobsData = Array.isArray(jobRes.data?.data) ? jobRes.data.data : [];
+            setJobs(jobsData);
 
             const stageCounts = candidates.reduce((acc, item) => {
                const stage = item.stage || item.status || 'Applied';
@@ -113,6 +88,20 @@ const RecruitmentManagement = () => {
             if (isMounted) {
                if (mapped.length) setPipelineData(mapped);
                if (candidates.length) setApplicantTotal(candidates.length);
+
+               // Map candidates to actions
+               const actions = candidates.slice(0, 5).map(cand => ({
+                 title: `${cand.name || cand.candidateName || 'Candidate'} - ${cand.position || cand.jobTitle || 'Position'}`,
+                 date: cand.appliedDate ? new Date(cand.appliedDate).toLocaleDateString() : 'Today',
+                 category: cand.position || 'Recruit',
+                 status: cand.status || 'Applied',
+                 size: cand.position || 'Applicant',
+                 path: '/recruitment/applications',
+                 icon: Briefcase,
+                 color: cand.status === 'Offer' ? 'text-emerald-600' : 'text-primary-600',
+                 bg: cand.status === 'Offer' ? 'bg-emerald-50' : 'bg-primary-50'
+               }));
+               setCurrentActions(actions);
             }
          } catch (err) {
             console.error('Failed to load recruitment pipeline:', err);

@@ -194,44 +194,19 @@ const Sidebar = () => {
       name: 'Leave',
       icon: Clock,
       path: '/leave',
-      key: 'leave',
-      hasSubmenu: true,
-      roles: ['HR'],
-      subItems: [
-        { name: 'Hub', icon: LayoutDashboard, path: '/leave' },
-        { name: 'Pending Approval', icon: AlertCircle, path: '/leave/pending-approval' },
-        { name: 'Leave Requests', icon: ClipboardList, path: '/leave/requests' },
-        { name: 'Leave Approval', icon: CheckCircle2, path: '/leave/approval' },
-        { name: 'Leave History', icon: History, path: '/leave/history' },
-      ]
+      roles: ['HR']
     },
     {
       name: role === 'HR' ? 'Recruitment' : 'Recruitment',
       icon: Briefcase,
       path: role === 'HR' ? '/recruitment' : '/admin/recruitment-control/posting',
-      key: 'recruitment',
-      hasSubmenu: true,
-      roles: ['HR', 'Admin'],
-      subItems: [
-        { name: role === 'HR' ? 'Hub' : 'Hub', icon: LayoutDashboard, path: role === 'HR' ? '/recruitment' : '/admin/recruitment-control/hub' },
-        { name: role === 'HR' ? 'Analytics' : 'Analytics', icon: PieChart, path: role === 'HR' ? '/recruitment/analytics' : '/admin/recruitment-control/analytics' },
-        { name: role === 'HR' ? 'Candidates' : 'Job Posting', icon: role === 'HR' ? Users : PlusCircle, path: role === 'HR' ? '/recruitment/candidates' : '/admin/recruitment-control/create' },
-        { name: role === 'HR' ? 'Applications' : 'Candidate Tracking', icon: role === 'HR' ? ClipboardList : Users, path: role === 'HR' ? '/recruitment/applications' : '/admin/recruitment-control/tracking' },
-        { name: role === 'HR' ? 'Interviews' : 'Interview Management', icon: Calendar, path: role === 'HR' ? '/recruitment/interviews' : '/admin/recruitment-control/interviews' },
-      ]
+      roles: ['HR', 'Admin']
     },
     {
       name: role === 'HR' ? 'Payroll' : 'Payroll',
       icon: CreditCard,
       path: role === 'HR' ? '/payroll' : '/admin/payroll-management',
-      key: 'payroll',
-      hasSubmenu: true,
-      roles: ['HR', 'Admin'],
-      subItems: [
-        { name: role === 'HR' ? 'Payroll Hub' : 'Salary Structure', icon: role === 'HR' ? LayoutDashboard : CreditCard, path: role === 'HR' ? '/payroll' : '/admin/payroll-management/structure' },
-        { name: role === 'HR' ? 'Salary Structure' : 'Payslip Generation', icon: role === 'HR' ? CreditCard : FileText, path: role === 'HR' ? '/payroll/salary' : '/admin/payroll-management/generate' },
-        { name: role === 'HR' ? 'Payslip Gen' : 'Finance Reports', icon: role === 'HR' ? FileText : PieChart, path: role === 'HR' ? '/payroll/salary' : '/admin/payroll-management/reports' },
-      ]
+      roles: ['HR', 'Admin']
     },
     {
       name: 'Company Policies',
@@ -249,39 +224,19 @@ const Sidebar = () => {
       name: 'Performance',
       icon: BarChart3,
       path: '/performance',
-      key: 'performance',
-      hasSubmenu: true,
-      roles: ['HR'],
-      subItems: [
-        { name: 'Hub', icon: LayoutDashboard, path: '/performance' },
-        { name: 'Metrics', icon: Target, path: '/performance/monthly' },
-        { name: 'Feedback', icon: ClipboardList, path: '/performance/feedback' },
-      ]
+      roles: ['HR']
     },
     {
       name: 'Analytics',
       icon: BarChart,
       path: '/analytics',
-      key: 'analytics',
-      hasSubmenu: true,
-      roles: ['HR'],
-      subItems: [
-        { name: 'Hub', icon: LayoutDashboard, path: '/analytics' },
-        { name: 'Employee Data', icon: Users, path: '/analytics/employees' },
-        { name: 'Attendance', icon: Activity, path: '/analytics/attendance' },
-      ]
+      roles: ['HR']
     },
     {
       name: 'Resignation',
       icon: DoorOpen,
       path: '/resignation',
-      key: 'resignation',
-      hasSubmenu: true,
-      roles: ['HR'],
-      subItems: [
-        { name: 'Hub', icon: LayoutDashboard, path: '/resignation' },
-        { name: 'Submit Exit', icon: FileSignature, path: '/resignation/submit' },
-      ]
+      roles: ['HR']
     },
     {
       name: role === 'HR' ? 'Settings' : 'System Settings',

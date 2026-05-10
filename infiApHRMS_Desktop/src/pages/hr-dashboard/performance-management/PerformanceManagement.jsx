@@ -46,24 +46,70 @@ const PerformanceManagement = () => {
   const [activeTab, setActiveTab] = useState('Quarterly');
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [dashStats, setDashStats] = useState({ pendingReviews: '—', evolutionIndex: '—', meritScore: '—' });
+  const [dashStats, setDashStats] = useState({ pendingReviews: '0', evolutionIndex: '0%', meritScore: '0 / 5.0' });
+  const [performanceActions, setPerformanceActions] = useState([]);
+  const [radarData, setRadarData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const [dashRes, feedbackRes] = await Promise.all([
+        setLoading(true);
+        const [dashRes, listRes, feedbackRes] = await Promise.all([
           getPerformanceDashboard(),
+          getPerformanceList(),
           getFeedbackStats()
         ]);
         const dash = dashRes.data?.data || {};
+        const list = listRes.data?.data || listRes.data || [];
         const feedback = feedbackRes.data?.data || {};
+
         setDashStats({
-          pendingReviews: dash.pendingReviews ?? feedback.pending ?? '18',
-          evolutionIndex: dash.evolutionIndex ? `${dash.evolutionIndex}%` : '94%',
-          meritScore: dash.averageMeritScore ? `${dash.averageMeritScore} / 5.0` : '4.8 / 5.0'
+          pendingReviews: String(dash.pendingReviews ?? feedback.pending ?? 0),
+          evolutionIndex: dash.evolutionIndex ? `${dash.evolutionIndex}%` : '0%',
+          meritScore: dash.averageMeritScore ? `${dash.averageMeritScore} / 5.0` : '0 / 5.0'
         });
+
+        // Map list to actions
+        const actions = list.slice(0, 4).map(item => ({
+          title: `${item.employeeName || item.name || 'Employee'} - Performance`,
+          date: item.period || new Date().toLocaleDateString(),
+          category: 'Productivity',
+          status: item.status || 'Reviewed',
+          size: item.rating ? `${item.rating} / 5.0` : 'N/A',
+          path: '/performance/feedback',
+          icon: Zap,
+          color: item.rating >= 4 ? 'text-emerald-600' : 'text-yellow-600',
+          bg: item.rating >= 4 ? 'bg-emerald-50' : 'bg-yellow-50'
+        }));
+        setPerformanceActions(actions);
+
+        // Build radar data from list
+        const metrics = list.reduce((acc, item) => {
+          if (item.metrics) {
+            Object.entries(item.metrics).forEach(([key, val]) => {
+              acc[key] = (acc[key] || 0) + val;
+            });
+          }
+          return acc;
+        }, {});
+        const radar = Object.entries(metrics).slice(0, 6).map(([subject, A]) => ({
+          subject: subject.charAt(0).toUpperCase() + subject.slice(1),
+          A: Math.round(A || 0),
+          fullMark: 150
+        }));
+        setRadarData(radar.length ? radar : [
+          { subject: 'Velocity', A: 0, fullMark: 150 },
+          { subject: 'Quality', A: 0, fullMark: 150 },
+          { subject: 'Strategy', A: 0, fullMark: 150 },
+          { subject: 'Teamwork', A: 0, fullMark: 150 },
+          { subject: 'Reliability', A: 0, fullMark: 150 },
+          { subject: 'Evolution', A: 0, fullMark: 150 },
+        ]);
       } catch (err) {
         console.error('Failed to fetch performance stats:', err);
+      } finally {
+        setLoading(false);
       }
     };
     fetchStats();
@@ -73,22 +119,6 @@ const PerformanceManagement = () => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
-
-  const performanceActions = [
-    { title: 'Monthly Metrics Cycle', date: 'Oct 28', category: 'Productivity', status: 'Priority', size: '25% Final', path: '/performance/monthly', icon: Zap, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-    { title: 'Leadership Feedback', date: 'Wk 42', category: 'Human Capital', status: 'Required', size: '18 Pending', path: '/performance/feedback', icon: ClipboardList, color: 'text-primary-600', bg: 'bg-primary-50' },
-    { title: 'Merit Assessment', date: 'FY 2024', category: 'Strategic', status: 'Ready', size: 'Verified', path: '/performance/merit', icon: Award, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { title: 'Skill Variance Report', date: 'Q3 2023', category: 'Diagnostic', status: 'Archive', size: '1.2 MB', path: '/performance/reports', icon: BarChart3, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-  ];
-
-  const radarData = [
-    { subject: 'Velocity', A: 120, fullMark: 150 },
-    { subject: 'Quality', A: 98, fullMark: 150 },
-    { subject: 'Strategy', A: 86, fullMark: 150 },
-    { subject: 'Teamwork', A: 99, fullMark: 150 },
-    { subject: 'Reliability', A: 130, fullMark: 150 },
-    { subject: 'Evolution', A: 65, fullMark: 150 },
-  ];
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] w-full gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative pt-4 overflow-hidden">
