@@ -1,333 +1,657 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  FileText, 
-  Download, 
-  Calendar, 
-  PieChart, 
-  AlertCircle, 
-  Clock, 
-  ChevronRight, 
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  Download,
+  Calendar,
+  AlertCircle,
+  Clock,
   Search,
-  BellRing,
-  CheckCircle2,
-  Filter,
-  ArrowRight,
-  ClipboardList,
-  Activity,
-  TrendingUp,
+  Check,
   X,
-  PlusCircle,
-  Settings,
-  Share2,
-  Layout,
-  CreditCard,
-  Wallet
+  ArrowRight,
+  TrendingUp,
+  Wallet,
+  Loader2,
+  Briefcase
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  ResponsiveContainer, 
-  Tooltip as RechartsTooltip,
-  XAxis,
+import {
+  BarChart,
+  Bar,
+  ResponsiveContainer,
   Cell
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-import { getSalaryList, getPayroll } from '../../../services/hrApi';
+import { getSalaryList, getPayroll, processSalary, getEmployees } from '../../../services/hrApi';
+
+const TABS = ['All', 'Pending', 'Processed', 'Not Assigned'];
+const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+const MONTHS = [
+  { value: 1, label: 'January' }, { value: 2, label: 'February' }, { value: 3, label: 'March' },
+  { value: 4, label: 'April' }, { value: 5, label: 'May' }, { value: 6, label: 'June' },
+  { value: 7, label: 'July' }, { value: 8, label: 'August' }, { value: 9, label: 'September' },
+  { value: 10, label: 'October' }, { value: 11, label: 'November' }, { value: 12, label: 'December' }
+];
+
+const formatCurrency = (value) => {
+  const num = Number(value);
+  if (Number.isNaN(num)) return '—';
+  return `₹${num.toLocaleString('en-IN')}`;
+};
+
+const formatDate = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const getStatusColor = (status) => {
+  const s = String(status).toLowerCase();
+  if (s === 'processed' || s === 'paid' || s === 'completed') return 'bg-emerald-50 text-emerald-600';
+  if (s === 'pending') return 'bg-orange-50 text-orange-600';
+  if (s === 'not assigned') return 'bg-slate-100 text-slate-500';
+  if (s === 'rejected' || s === 'failed') return 'bg-rose-50 text-rose-600';
+  return 'bg-slate-100 text-slate-600';
+};
 
 const PayrollManagement = () => {
   const navigate = useNavigate();
   const [notification, setNotification] = useState(null);
-  const [activeTab, setActiveTab] = useState('Monthly');
-  const [showConfigDrawer, setShowConfigDrawer] = useState(false);
+  const [activeTab, setActiveTab] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [payrollData, setPayrollData] = useState([]);
-  const [payloadActions, setPayloadActions] = useState([]);
+  const [payrollEntries, setPayrollEntries] = useState([]);
   const [expenseData, setExpenseData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [assignForm, setAssignForm] = useState({
+    basicSalary: '',
+    deductions: '',
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear()
+  });
 
   const showNotification = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
   };
 
-  useEffect(() => {
-    const fetchPayrollData = async () => {
-      try {
-        setLoading(true);
-        const [salaryRes] = await Promise.all([
-          getSalaryList()
-        ]);
+  const currentMonthLabel = MONTHS.find((m) => m.value === (new Date().getMonth() + 1))?.label || 'January';
+  const currentYear = new Date().getFullYear();
 
-        const salaryList = salaryRes.data?.data || salaryRes.data || [];
-        setPayrollData(salaryList);
+  const fetchPayrollData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [empRes, salaryRes, payrollRes] = await Promise.all([
+        getEmployees(),
+        getSalaryList({ month: currentMonthLabel, year: currentYear }).catch((err) => { console.log('getSalaryList error:', err); return null; }),
+        getPayroll({ month: currentMonthLabel, year: currentYear }).catch((err) => { console.log('getPayroll error:', err); return null; })
+      ]);
 
-        // Map to actions
-        const actions = salaryList.slice(0, 4).map(item => ({
-          title: `${item.employeeName || item.name || 'Employee'} - Salary`,
-          date: item.month ? `${item.year}-${String(item.month).padStart(2, '0')}` : 'Current',
-          category: 'Processing',
-          status: item.status || 'Pending',
-          size: item.netSalary ? `$${item.netSalary.toLocaleString()}` : 'Pending',
-          path: '/payroll/salary',
-          icon: CreditCard,
-          color: item.status === 'Processed' ? 'text-emerald-600' : 'text-orange-600',
-          bg: item.status === 'Processed' ? 'bg-emerald-50' : 'bg-orange-50'
-        }));
-        setPayloadActions(actions);
+      const employees = empRes?.data?.data || empRes?.data || [];
+      const salaryList = salaryRes?.data?.data || salaryRes?.data || [];
+      const payrollList = payrollRes?.data?.data || payrollRes?.data || [];
 
-        // Department expense breakdown
-        const deptExpenses = salaryList.reduce((acc, item) => {
-          const dept = item.department || 'Other';
-          acc[dept] = (acc[dept] || 0) + (item.netSalary || item.salary || 0);
-          return acc;
-        }, {});
+      console.log('Employees count:', employees.length);
+      console.log('Salary records count:', salaryList.length);
+      console.log('Payroll records count:', payrollList.length);
 
-        const mapped = Object.entries(deptExpenses).map(([name, value]) => ({ name, value }));
-        setExpenseData(mapped.length ? mapped : [
-          { name: 'Eng', value: 0 }, { name: 'Prod', value: 0 }, { name: 'Ops', value: 0 },
-          { name: 'Mark', value: 0 }, { name: 'HR', value: 0 }, { name: 'Sales', value: 0 }
-        ]);
-      } catch (err) {
-        console.error('Failed to fetch payroll data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPayrollData();
+      // Build map of salary and payroll by userId for fast lookup
+      const salaryMap = new Map();
+      salaryList.forEach((s) => {
+        const key = s.userId?._id || s.userId?.id || s.userId || s.employeeId || s.id;
+        if (key) salaryMap.set(String(key), s);
+      });
+      const payrollMap = new Map();
+      payrollList.forEach((p) => {
+        const key = p.userId?._id || p.userId?.id || p.userId || p.employeeId || p.id;
+        if (key) payrollMap.set(String(key), p);
+      });
+
+      // Merge: start with real employee list, overlay salary/payroll data
+      const merged = employees.map((emp, index) => {
+        const empId = String(emp._id || emp.id || emp.employeeId || emp.employeeCode || '');
+        const salary = salaryMap.get(empId) || {};
+        const payroll = payrollMap.get(empId) || {};
+        // Only consider it a real salary record if it has a MongoDB _id.
+        // getSalaryProcessingList returns fallback data without _id when no records exist.
+        const hasSalary = !!(salary._id || payroll._id);
+
+        return {
+          id: empId || `EMP-${index + 1}`,
+          name: emp.name || emp.fullName || emp.employeeName || 'Employee',
+          email: emp.email || '',
+          employeeId: emp.employeeId || emp.employeeCode || '—',
+          department: emp.department || emp.dept || '—',
+          role: emp.designation || emp.role || emp.jobTitle || '—',
+          month: salary.month || payroll.month || '—',
+          year: salary.year || payroll.year || '—',
+          basicSalary: salary.basicSalary || salary.basic || salary.salary || 0,
+          deductions: salary.deductions || salary.totalDeductions || 0,
+          netSalary: salary.netSalary || salary.netPay || salary.finalSalary || 0,
+          status: hasSalary ? (salary.status || payroll.status || 'Pending') : 'Not Assigned',
+          processedAt: salary.processedAt || payroll.processedAt || null,
+          avatar: emp.profileImage || emp.profilePicture || emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name || emp.fullName || 'E')}&background=random`
+        };
+      });
+
+      setPayrollEntries(merged);
+
+      // Department expense breakdown (only for assigned salaries)
+      const deptExpenses = merged.reduce((acc, item) => {
+        const dept = item.department || 'Other';
+        if (Number(item.netSalary) > 0 && String(item.status).toLowerCase() !== 'not assigned') {
+          acc[dept] = (acc[dept] || 0) + Number(item.netSalary);
+        }
+        return acc;
+      }, {});
+
+      const chartData = Object.entries(deptExpenses).map(([name, value]) => ({ name, value }));
+      setExpenseData(chartData.length ? chartData : []);
+    } catch (err) {
+      console.error('Failed to fetch payroll data:', err);
+      setError('Failed to load payroll data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+  useEffect(() => {
+    fetchPayrollData();
+  }, [fetchPayrollData]);
+
+  const stats = useMemo(() => {
+    const total = payrollEntries.length;
+    const totalPayroll = payrollEntries.reduce((sum, e) => sum + (Number(e.netSalary) || 0), 0);
+    const processed = payrollEntries.filter((e) => {
+      const s = String(e.status).toLowerCase();
+      return s === 'processed' || s === 'paid' || s === 'completed';
+    }).length;
+    const pending = payrollEntries.filter((e) => {
+      const s = String(e.status).toLowerCase();
+      return s === 'pending';
+    }).length;
+    const notAssigned = total - processed - pending;
+    return { total, totalPayroll, processed, pending, notAssigned };
+  }, [payrollEntries]);
+
+  const tabCounts = useMemo(() => ({
+    All: stats.total,
+    Pending: stats.pending,
+    Processed: stats.processed,
+    'Not Assigned': stats.notAssigned
+  }), [stats]);
+
+  const filteredEntries = payrollEntries.filter((entry) => {
+    const query = searchQuery.toLowerCase();
+    const matchesSearch = [entry.name, entry.employeeId, entry.department, entry.role].some(
+      (field) => String(field).toLowerCase().includes(query)
+    );
+    const tab = activeTab.toLowerCase();
+    const status = String(entry.status).toLowerCase();
+    const matchesTab =
+      tab === 'all' ? true :
+      tab === 'pending' ? status === 'pending' :
+      tab === 'processed' ? ['processed', 'paid', 'completed'].includes(status) :
+      tab === 'not assigned' ? status === 'not assigned' :
+      true;
+    return matchesSearch && matchesTab;
+  });
+
+  const openAssignModal = (entry) => {
+    setSelectedEmployee(entry);
+    setAssignForm({
+      basicSalary: '',
+      deductions: '',
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear()
+    });
+    setAssignModalOpen(true);
+  };
+
+  const closeAssignModal = () => {
+    setAssignModalOpen(false);
+    setSelectedEmployee(null);
+  };
+
+  const handleAssignSalary = async (e) => {
+    e.preventDefault();
+    if (!selectedEmployee) return;
+    setProcessingId(selectedEmployee.id);
+    try {
+      const monthLabel = MONTHS.find((m) => m.value === Number(assignForm.month))?.label || 'January';
+      const payload = {
+        userId: selectedEmployee.id,
+        basicSalary: Number(assignForm.basicSalary),
+        bonus: 0,
+        deductions: Number(assignForm.deductions),
+        month: monthLabel,
+        year: Number(assignForm.year),
+        status: 'Pending'
+      };
+      console.log('Assign salary payload:', payload);
+      await processSalary(payload);
+      const net = (Number(assignForm.basicSalary) || 0) - (Number(assignForm.deductions) || 0);
+      setPayrollEntries((prev) =>
+        prev.map((item) =>
+          item.id === selectedEmployee.id
+            ? {
+                ...item,
+                basicSalary: Number(assignForm.basicSalary),
+                deductions: Number(assignForm.deductions),
+                netSalary: net,
+                month: monthLabel,
+                year: Number(assignForm.year),
+                status: 'Pending'
+              }
+            : item
+        )
+      );
+      showNotification(`Salary assigned to ${selectedEmployee.name}`);
+      closeAssignModal();
+      // Re-fetch to confirm persistence in DB
+      await fetchPayrollData();
+    } catch (err) {
+      console.error('Failed to assign salary:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to assign salary';
+      showNotification(msg);
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleProcessSalary = async (id) => {
+    const entry = payrollEntries.find((e) => e.id === id);
+    if (!entry || !entry.month || entry.month === '—' || !entry.year || entry.year === '—') {
+      showNotification('Salary details incomplete. Assign salary first.');
+      return;
+    }
+    setProcessingId(id);
+    try {
+      const payload = {
+        userId: id,
+        month: entry.month,
+        year: Number(entry.year),
+        basicSalary: Number(entry.basicSalary),
+        bonus: 0,
+        deductions: Number(entry.deductions),
+        status: 'Processed'
+      };
+      console.log('Process salary payload:', payload);
+      await processSalary(payload);
+      setPayrollEntries((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, status: 'Processed', processedAt: new Date().toISOString() } : e))
+      );
+      showNotification('Salary processed successfully');
+      // Re-fetch to confirm persistence in DB
+      await fetchPayrollData();
+    } catch (err) {
+      console.error('Failed to process salary:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to process salary';
+      showNotification(msg);
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] w-full gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700 relative pt-4 overflow-hidden">
-      
-      {/* Configuration Drawer */}
-      {showConfigDrawer && (
-        <div className="fixed inset-0 z-200 flex justify-end">
-           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in" onClick={() => setShowConfigDrawer(false)}></div>
-           <div className="w-full max-w-lg bg-white h-full relative z-210 shadow-2xl animate-in slide-in-from-right-full duration-500 flex flex-col">
-              <div className="p-10 border-b border-slate-50 flex items-center justify-between">
-                 <div>
-                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">Tax & Deduction Logic</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Configure financial algorithmic thresholds</p>
-                 </div>
-                 <button onClick={() => setShowConfigDrawer(false)} className="p-3 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-2xl transition-all"><X size={20} /></button>
-              </div>
-              <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar no-scrollbar">
-                 <section className="space-y-6">
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                       <CreditCard size={14} className="text-primary-500" />
-                       Standard Deductions
-                    </h4>
-                    <div className="space-y-4">
-                       {['PF Contribution (12%)', 'Professional Tax', 'Income Tax Slab v2', 'Health Insurance'].map(opt => (
-                          <label key={opt} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl cursor-pointer hover:bg-slate-100 transition-all">
-                             <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">{opt}</span>
-                             <input type="checkbox" className="w-5 h-5 rounded-lg border-slate-200 text-primary-600 focus:ring-primary-500" defaultChecked />
-                          </label>
-                       ))}
-                    </div>
-                 </section>
-              </div>
-              <div className="p-10 border-t border-slate-50 bg-slate-50/20">
-                 <button 
-                  onClick={() => { setShowConfigDrawer(false); showNotification("Updating financial deduction algorithms..."); }}
-                  className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition-all shadow-2xl shadow-slate-200 uppercase tracking-[0.2em] text-[11px]"
-                 >
-                    Recalculate Net Salary
-                 </button>
-              </div>
-           </div>
-        </div>
-      )}
+    <div className="flex flex-col h-[calc(100vh-120px)] w-full gap-6 pt-4 overflow-hidden">
 
-      {/* Global Notification */}
-      {notification && (
-        <div className="fixed top-24 right-8 z-100 animate-in slide-in-from-right-8 fade-in flex items-center gap-3 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl border border-white/10">
-          <BellRing size={20} className="text-primary-400" />
-          <span className="text-sm font-bold tracking-tight uppercase tracking-widest">{notification}</span>
-        </div>
-      )}
-
-      {/* Header System */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0">
-        <div>
-          <h1 className="text-4xl font-black text-slate-800 tracking-tight leading-none mb-2">Financial Integrity Hub</h1>
-          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Corporate Payroll Logistics & Compensation Diagnostic</p>
-        </div>
-        <div className="flex items-center gap-3 self-start lg:self-center">
-           <button 
-             onClick={() => showNotification("Accessing bank transfer logs...")}
-             className="px-8 py-3 bg-white border border-slate-100 text-slate-400 font-black text-[10px] uppercase rounded-2xl hover:bg-slate-50 transition-all shadow-sm active:scale-95"
-           >
-              Transfer Logs
-           </button>
-           <button 
-             onClick={() => setShowConfigDrawer(true)}
-             className="px-10 py-3 bg-slate-900 text-white font-black rounded-2xl hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 uppercase tracking-widest text-[10px]"
-           >
-              Configure Logic
-           </button>
-        </div>
-      </div>
-
-      {/* Main Workspace Grid */}
-      <div className="flex-1 grid grid-cols-1 xl:grid-cols-4 gap-8 overflow-hidden min-h-0">
-         
-         {/* 1. SIDEBAR: Live Financial Metrics */}
-         <div className="xl:col-span-1 flex flex-col gap-6 overflow-y-auto no-scrollbar pb-10">
-            
-            <div className="card-soft bg-white p-8 border-slate-100 shadow-soft">
-               <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">Expense Distribution</h3>
-                  <TrendingUp size={20} className="text-emerald-500" />
-               </div>
-               <div className="h-32 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={expenseData}>
-                       <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                          {expenseData.map((entry, index) => (
-                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                       </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-               </div>
-                <div className="mt-6 flex items-end justify-between">
-                   <div>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Gross Payroll</p>
-                      <p className="text-3xl font-black text-slate-800 tracking-tighter leading-none">₹1.42 Cr</p>
-                   </div>
-                   <span className="px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-lg">98% COMP</span>
+      {/* Assign Salary Modal */}
+      {assignModalOpen && selectedEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={closeAssignModal} />
+          <div className="relative bg-white w-full max-w-md rounded-xl shadow-xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <img src={selectedEmployee.avatar} className="w-10 h-10 rounded-lg object-cover border border-slate-100" alt="" />
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800">Assign Salary</h3>
+                  <p className="text-xs text-slate-400">{selectedEmployee.name}</p>
                 </div>
+              </div>
+              <button onClick={closeAssignModal} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
             </div>
-
-            <div className="space-y-4">
-               {[
-                 { label: 'Unprocessed Items', value: '42', icon: Clock, color: 'text-orange-500' },
-                 { label: 'Compliance Index', value: '100%', icon: Activity, color: 'text-primary-500' },
-               ].map((stat, i) => (
-                 <div key={i} className="card-soft bg-white p-6 flex items-center gap-4 hover:border-primary-100 transition-all cursor-crosshair">
-                    <div className={`p-3 bg-slate-50 rounded-2xl ${stat.color} shadow-inner`}><stat.icon size={20} /></div>
-                    <div>
-                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-2">{stat.label}</p>
-                       <p className="text-2xl font-black text-slate-800 tracking-tighter leading-none">{stat.value}</p>
-                    </div>
-                 </div>
-               ))}
-            </div>
-
-            <div className="card-soft bg-slate-900 p-8 border-none text-white relative overflow-hidden group mt-auto">
-               <div className="relative z-10">
-                  <AlertCircle className="mb-4 text-emerald-400" size={24} />
-                  <h4 className="text-sm font-black uppercase tracking-widest leading-tight mb-2">Audit Synchronization</h4>
-                  <p className="text-[10px] opacity-60 font-black leading-relaxed uppercase tracking-widest mb-6">Oct disbursement files are now locked for final diagnostic verification.</p>
-                  <button className="w-full py-4 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-[0.25em] transition-all">Init Sync</button>
-               </div>
-               <div className="absolute -right-4 -bottom-4 w-32 h-32 bg-emerald-600/20 rounded-full blur-3xl group-hover:scale-150 transition-transform"></div>
-            </div>
-         </div>
-
-         {/* 2. MAIN HUB: Payroll Workspaces */}
-         <div className="xl:col-span-3 flex flex-col min-h-0 bg-white border border-slate-100 rounded-[44px] shadow-soft overflow-hidden">
-            
-            {/* Command Toolbar */}
-            <div className="px-10 py-8 border-b border-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-slate-50/20">
-               <div className="flex items-center gap-8">
-                  {['Processing', 'Verified', 'Archives', 'Analytics'].map(tab => (
-                    <button 
-                      key={tab} 
-                      onClick={() => setActiveTab(tab)}
-                      className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all relative py-2 ${activeTab === tab ? 'text-primary-600' : 'text-slate-300 hover:text-slate-800'}`}
-                    >
-                       {tab}
-                       {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-1 bg-primary-600 rounded-full animate-in zoom-in-y"></div>}
-                    </button>
-                  ))}
-               </div>
-               <div className="relative group max-w-sm w-full lg:w-64">
-                  <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                  <input 
-                    type="text" 
-                    placeholder="Search ledger, receipts, or nodes..." 
-                    className="w-full bg-white border border-slate-100 focus:border-primary-100 outline-none rounded-2xl pl-12 pr-4 py-3 text-xs font-black text-slate-600 transition-all shadow-sm uppercase tracking-tight"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+            <form onSubmit={handleAssignSalary} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Month</label>
+                  <select
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors bg-white"
+                    value={assignForm.month}
+                    onChange={(e) => setAssignForm((prev) => ({ ...prev, month: Number(e.target.value) }))}
+                    required
+                  >
+                    {MONTHS.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Year</label>
+                  <input
+                    type="number" min={2000} max={2100}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors"
+                    value={assignForm.year}
+                    onChange={(e) => setAssignForm((prev) => ({ ...prev, year: e.target.value }))}
+                    required
                   />
-               </div>
-            </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Basic Salary (₹)</label>
+                <input
+                  type="number" min={0}
+                  placeholder="e.g. 50000"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors"
+                  value={assignForm.basicSalary}
+                  onChange={(e) => setAssignForm((prev) => ({ ...prev, basicSalary: e.target.value }))}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Deductions (₹)</label>
+                <input
+                  type="number" min={0}
+                  placeholder="e.g. 5000"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors"
+                  value={assignForm.deductions}
+                  onChange={(e) => setAssignForm((prev) => ({ ...prev, deductions: e.target.value }))}
+                  required
+                />
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg">
+                <p className="text-xs text-slate-400 mb-0.5">Net Salary</p>
+                <p className="text-lg font-bold text-slate-800">
+                  {formatCurrency((Number(assignForm.basicSalary) || 0) - (Number(assignForm.deductions) || 0))}
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={processingId === selectedEmployee.id}
+                className="w-full py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
+              >
+                {processingId === selectedEmployee.id ? 'Saving...' : 'Assign Salary'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
-            {/* Diagnostic Table/Cards */}
-            <div className="flex-1 overflow-y-auto no-scrollbar">
-               <table className="w-full text-left">
-                  <thead className="sticky top-0 z-20 bg-slate-50/80 backdrop-blur-md border-b border-slate-100">
-                     <tr>
-                        <th className="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Financial Workspace</th>
-                        <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ledger Period</th>
-                        <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Compliance</th>
-                        <th className="px-6 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 relative z-10">
-                     {payloadActions.map((act, idx) => (
-                        <tr key={idx} onClick={() => navigate(act.path)} className="group hover:bg-slate-50/50 transition-all cursor-pointer">
-                           <td className="px-10 py-8">
-                              <div className="flex items-center gap-5">
-                                 <div className={`p-4 rounded-2xl ${act.bg} ${act.color || act.iconColor} border border-slate-100 shadow-sm group-hover:scale-110 transition-all`}>
-                                    <act.icon size={24} />
-                                 </div>
-                                 <div>
-                                    <p className="text-sm font-black text-slate-800 tracking-tight leading-none group-hover:text-primary-600 transition-colors uppercase mb-2">{act.title}</p>
-                                    <div className="flex items-center gap-2 text-indigo-400 font-black text-[9px] uppercase tracking-[0.1em]">
-                                       {act.size} • Verified Archive
-                                    </div>
-                                 </div>
-                              </div>
-                           </td>
-                           <td className="px-6 py-8">
-                              <div className="flex items-center gap-2 text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                 <Calendar size={14} className="text-primary-400" />
-                                 {act.date}
-                              </div>
-                           </td>
-                           <td className="px-6 py-8">
-                              <span className={`px-4 py-1.5 text-[10px] font-black rounded-xl uppercase tracking-widest border ${
-                                 act.status === 'Priority' ? 'bg-orange-50 text-orange-600 border-orange-100' : 
-                                 act.status === 'Ready' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-900/5 text-slate-600 border-slate-100'
-                              }`}>{act.status}</span>
-                           </td>
-                           <td className="px-10 py-8 text-right">
-                              <div className="flex items-center justify-end gap-3">
-                                 <button onClick={(e) => { e.stopPropagation(); showNotification(`Exporting financial ledger: ${act.title}...`); }} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-slate-800 rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all">
-                                    <Download size={20} />
-                                 </button>
-                                 <button className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-primary-600 rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all">
-                                    <ArrowRight size={20} />
-                                 </button>
-                              </div>
-                           </td>
-                        </tr>
-                     ))}
-                  </tbody>
-               </table>
-            </div>
+      {/* Notification */}
+      {notification && (
+        <div className="fixed top-20 right-6 z-50 flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-lg shadow-lg">
+          <Check size={16} className="text-emerald-400" />
+          <span className="text-sm">{notification}</span>
+        </div>
+      )}
 
-            {/* Persistence Footer */}
-            <div className="px-10 py-6 bg-slate-900 border-t border-white/5 flex items-center justify-between text-white shrink-0">
-               <div className="flex items-center gap-4">
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Ledger Node: FIN-MUM-SRV-02 Active</p>
-               </div>
-               <div className="flex items-center gap-6">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Last disbursement: Oct 12, 2023</p>
-                  <button className="px-6 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">Sync Ledger</button>
-               </div>
-            </div>
-
-         </div>
-
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Payroll</h1>
+          <p className="text-sm text-slate-400 mt-0.5">Manage salaries, deductions, and disbursements</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/payroll/transfers')}
+            className="px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+          >
+            Transfer Logs
+          </button>
+        </div>
       </div>
 
+      {/* Main Grid */}
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-4 gap-6 overflow-hidden min-h-0">
+
+        {/* Sidebar Stats */}
+        <div className="xl:col-span-1 flex flex-col gap-4 overflow-y-auto pb-4">
+
+          {/* Expense Chart */}
+          <div className="bg-white p-5 rounded-xl border border-slate-100">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-slate-700">Expense by Department</h3>
+              <TrendingUp size={16} className="text-emerald-500" />
+            </div>
+            <div className="h-28 w-full">
+              {expenseData.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-xs text-slate-400">
+                  No assigned salaries yet
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <BarChart data={expenseData}>
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                      {expenseData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div className="mt-4 flex items-end justify-between">
+              <div>
+                <p className="text-xs text-slate-400 mb-0.5">Total Payroll</p>
+                <p className="text-2xl font-bold text-slate-800">{formatCurrency(stats.totalPayroll)}</p>
+              </div>
+              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-medium rounded">
+                {stats.total > 0 ? Math.round((stats.processed / stats.total) * 100) : 0}% done
+              </span>
+            </div>
+          </div>
+
+          {/* Stat Cards */}
+          {[
+            { label: 'Total Employees', value: stats.total, icon: Briefcase, color: 'text-indigo-500', bg: 'bg-indigo-50' },
+            { label: 'Processed', value: stats.processed, icon: Check, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+            { label: 'Pending', value: stats.pending, icon: Clock, color: 'text-orange-500', bg: 'bg-orange-50' },
+            { label: 'Not Assigned', value: stats.notAssigned, icon: AlertCircle, color: 'text-slate-500', bg: 'bg-slate-100' },
+          ].map((stat, i) => (
+            <div key={i} className="bg-white p-4 rounded-xl border border-slate-100 flex items-center gap-3 hover:border-slate-200 transition-colors">
+              <div className={`p-2.5 rounded-lg ${stat.bg} ${stat.color}`}>
+                <stat.icon size={18} />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400 mb-0.5">{stat.label}</p>
+                <p className="text-xl font-bold text-slate-800">{stat.value}</p>
+              </div>
+            </div>
+          ))}
+
+          {/* Alert Card */}
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 mt-auto">
+            <div className="flex items-start gap-2 mb-2">
+              <AlertCircle className="text-orange-500 shrink-0" size={16} />
+              <div>
+                <h4 className="text-sm font-medium text-slate-700">Payroll Alert</h4>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {stats.pending} employee{stats.pending !== 1 ? 's' : ''} pending salary processing.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab('Pending')}
+              className="w-full py-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-medium transition-colors"
+            >
+              View Pending
+            </button>
+          </div>
+        </div>
+
+        {/* Main Table Area */}
+        <div className="xl:col-span-3 flex flex-col min-h-0 bg-white border border-slate-100 rounded-xl overflow-hidden">
+
+          {/* Toolbar */}
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/30">
+            <div className="flex items-center gap-1">
+              {TABS.map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    activeTab === tab ? 'bg-slate-900 text-white' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  {tab} {tabCounts[tab] > 0 && `(${tabCounts[tab]})`}
+                </button>
+              ))}
+            </div>
+            <div className="relative max-w-sm w-full sm:w-56">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search employees, IDs..."
+                className="w-full bg-white border border-slate-200 focus:border-slate-400 outline-none rounded-lg pl-9 pr-3 py-1.5 text-sm text-slate-700 transition-colors"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="flex-1 overflow-y-auto">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-3">
+                <Loader2 size={28} className="text-slate-400 animate-spin" />
+                <p className="text-sm text-slate-400">Loading payroll data...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-3">
+                <AlertCircle size={28} className="text-rose-400" />
+                <p className="text-sm text-slate-500">{error}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-3 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : filteredEntries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-2">
+                <Wallet size={28} className="text-slate-300" />
+                <p className="text-sm text-slate-400">No payroll entries found</p>
+              </div>
+            ) : (
+              <table className="w-full text-left">
+                <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="px-5 py-3 text-xs font-medium text-slate-400">Employee</th>
+                    <th className="px-4 py-3 text-xs font-medium text-slate-400">Period</th>
+                    <th className="px-4 py-3 text-xs font-medium text-slate-400">Basic Salary</th>
+                    <th className="px-4 py-3 text-xs font-medium text-slate-400">Deductions</th>
+                    <th className="px-4 py-3 text-xs font-medium text-slate-400">Net Salary</th>
+                    <th className="px-4 py-3 text-xs font-medium text-slate-400">Status</th>
+                    <th className="px-5 py-3 text-xs font-medium text-slate-400 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filteredEntries.map((entry) => (
+                    <tr key={entry.id} className="group hover:bg-slate-50/60 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={entry.avatar}
+                            className="w-9 h-9 rounded-full object-cover border border-slate-100 shrink-0"
+                            alt={entry.name}
+                            onError={(e) => { e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.name)}&background=random`; }}
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{entry.name}</p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {entry.employeeId !== '—' ? `${entry.employeeId} · ${entry.department}` : entry.department}
+                              {entry.role !== '—' ? ` · ${entry.role}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Calendar size={13} className="text-slate-400" />
+                          {entry.month !== '—' && entry.year !== '—' ? `${entry.month}/${entry.year}` : 'Current'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-700">
+                        {String(entry.status).toLowerCase() === 'not assigned' ? '—' : formatCurrency(entry.basicSalary)}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-rose-500">
+                        {String(entry.status).toLowerCase() === 'not assigned' ? '—' : formatCurrency(entry.deductions)}
+                      </td>
+                      <td className="px-4 py-4 text-sm font-semibold text-slate-800">
+                        {String(entry.status).toLowerCase() === 'not assigned' ? '—' : formatCurrency(entry.netSalary)}
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-medium rounded-full ${getStatusColor(entry.status)}`}>
+                          {entry.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {(() => {
+                            const status = String(entry.status).toLowerCase();
+                            if (status === 'processed' || status === 'paid' || status === 'completed') {
+                              return null;
+                            }
+                            const isAssign = status === 'not assigned';
+                            return (
+                              <button
+                                onClick={() => isAssign ? openAssignModal(entry) : handleProcessSalary(entry.id)}
+                                disabled={processingId === entry.id}
+                                className="px-3 py-1.5 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
+                              >
+                                {processingId === entry.id ? 'Processing...' : isAssign ? 'Assign' : 'Process'}
+                              </button>
+                            );
+                          })()}
+                          {String(entry.status).toLowerCase() !== 'not assigned' && (
+                            <>
+                              <button
+                                onClick={() => showNotification(`Downloading payslip for ${entry.name}`)}
+                                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                              >
+                                <Download size={16} />
+                              </button>
+                              <button
+                                onClick={() => navigate(`/payroll/payslip/${entry.id}`)}
+                                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                              >
+                                <ArrowRight size={16} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+              <p className="text-xs text-slate-500">Payroll system active</p>
+            </div>
+            <div className="flex items-center gap-4">
+              <p className="text-xs text-slate-400">Last updated: {formatDate(new Date())}</p>
+              <button
+                onClick={() => { showNotification('Refreshing...'); fetchPayrollData(); }}
+                className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-medium transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
     </div>
   );
 };

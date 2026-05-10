@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Punch = require("../models/punch.model");
 const LeaveApplication = require("../models/leaveApplication.model");
@@ -1482,17 +1483,25 @@ exports.getSalaryProcessingList = async (req, res) => {
 exports.processSalary = async (req, res) => {
     try {
         const { userId, month, year, basicSalary, bonus, deductions, status = "Processed" } = req.body;
-        
+
+        if (!userId || !mongoose.isValidObjectId(userId)) {
+            return res.status(400).json({ success: false, message: "Valid userId is required" });
+        }
+        if (!month || !year || basicSalary === undefined || deductions === undefined) {
+            return res.status(400).json({ success: false, message: "month, year, basicSalary, and deductions are required" });
+        }
+
         const netPay = (Number(basicSalary) + Number(bonus || 0)) - Number(deductions || 0);
 
         const payroll = await Payroll.findOneAndUpdate(
             { userId, month, year },
-            { basicSalary, bonus, deductions, netPay, status },
-            { upsert: true, new: true }
+            { basicSalary: Number(basicSalary), bonus: Number(bonus || 0), deductions: Number(deductions || 0), allowances: 0, netPay, status },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
         );
 
         res.status(201).json({ success: true, message: "Salary record saved", data: payroll });
     } catch (error) {
+        console.error("processSalary error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
