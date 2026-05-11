@@ -193,7 +193,7 @@ function App() {
                       <Route path="employees/edit/:id" element={<EditEmployee />} />
 
                       {/* Payroll */}
-                      <Route path="/payroll-management" element={<Navigate to="/admin/employees" replace />} />
+                      <Route path="/payroll-management" element={<PayrollManagement />} />
                       <Route path="/payroll-management/structure" element={<SalaryStructure />} />
                       <Route path="/payroll-management/generate" element={<PayslipGeneration />} />
                       <Route path="/payroll-management/reports" element={<FinanceReports />} />

@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { getSalaryList, getPayroll, processSalary, getEmployees } from '../../../services/hrApi';
+import { useAuth } from '../../../context/AuthContext';
 
 const TABS = ['All', 'Pending', 'Processed', 'Not Assigned'];
 const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
@@ -53,8 +54,19 @@ const getStatusColor = (status) => {
   return 'bg-slate-100 text-slate-600';
 };
 
+const normalizeAccountRole = (value) => {
+  const role = String(value || '').trim().toLowerCase();
+  if (role === 'main admin' || role === 'main_admin') return 'main_admin';
+  if (role === 'superadmin' || role === 'super admin') return 'superadmin';
+  if (role === 'admin') return 'admin';
+  if (role === 'hr') return 'hr';
+  if (role === 'employee') return 'employee';
+  return role;
+};
+
 const PayrollManagement = () => {
   const navigate = useNavigate();
+  const { role: viewerRole } = useAuth();
   const [notification, setNotification] = useState(null);
   const [activeTab, setActiveTab] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -79,6 +91,21 @@ const PayrollManagement = () => {
 
   const currentMonthLabel = MONTHS.find((m) => m.value === (new Date().getMonth() + 1))?.label || 'January';
   const currentYear = new Date().getFullYear();
+  const currentViewerRole = normalizeAccountRole(viewerRole);
+
+  const canAssignSalary = useCallback((entry) => {
+    const targetRole = normalizeAccountRole(entry?.accountRole);
+
+    if (currentViewerRole === 'admin') {
+      return targetRole === 'employee';
+    }
+
+    if (currentViewerRole === 'hr') {
+      return !['admin', 'main_admin', 'superadmin'].includes(targetRole);
+    }
+
+    return false;
+  }, [currentViewerRole]);
 
   const fetchPayrollData = useCallback(async () => {
     setLoading(true);
@@ -125,7 +152,8 @@ const PayrollManagement = () => {
           email: emp.email || '',
           employeeId: emp.employeeId || emp.employeeCode || '—',
           department: emp.department || emp.dept || '—',
-          role: emp.designation || emp.role || emp.jobTitle || '—',
+          role: emp.designation || emp.jobTitle || emp.role || '—',
+          accountRole: emp.role || '',
           month: salary.month || payroll.month || '—',
           year: salary.year || payroll.year || '—',
           basicSalary: salary.basicSalary || salary.basic || salary.salary || 0,
@@ -201,6 +229,11 @@ const PayrollManagement = () => {
   });
 
   const openAssignModal = (entry) => {
+    if (!canAssignSalary(entry)) {
+      showNotification('You do not have permission to assign salary for this account.');
+      return;
+    }
+
     setSelectedEmployee(entry);
     setAssignForm({
       basicSalary: '',
@@ -219,6 +252,13 @@ const PayrollManagement = () => {
   const handleAssignSalary = async (e) => {
     e.preventDefault();
     if (!selectedEmployee) return;
+
+    if (!canAssignSalary(selectedEmployee)) {
+      showNotification('You do not have permission to assign salary for this account.');
+      closeAssignModal();
+      return;
+    }
+
     setProcessingId(selectedEmployee.id);
     try {
       const monthLabel = MONTHS.find((m) => m.value === Number(assignForm.month))?.label || 'January';
@@ -310,6 +350,7 @@ const PayrollManagement = () => {
                 <div>
                   <h3 className="text-base font-semibold text-slate-800">Assign Salary</h3>
                   <p className="text-xs text-slate-400">{selectedEmployee.name}</p>
+                  <p className="text-[11px] text-slate-400">Role: {selectedEmployee.role}</p>
                 </div>
               </div>
               <button onClick={closeAssignModal} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
@@ -598,6 +639,16 @@ const PayrollManagement = () => {
                               return null;
                             }
                             const isAssign = status === 'not assigned';
+                            const allowAssign = canAssignSalary(entry);
+
+                            if (isAssign && !allowAssign) {
+                              return (
+                                <span className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-slate-100 text-slate-500">
+                                  Restricted
+                                </span>
+                              );
+                            }
+
                             return (
                               <button
                                 onClick={() => isAssign ? openAssignModal(entry) : handleProcessSalary(entry.id)}

@@ -1491,6 +1491,21 @@ exports.processSalary = async (req, res) => {
             return res.status(400).json({ success: false, message: "month, year, basicSalary, and deductions are required" });
         }
 
+        const targetUser = await User.findById(userId).select("role name").lean();
+        if (!targetUser) {
+            return res.status(404).json({ success: false, message: "Target user not found" });
+        }
+
+        const requesterRole = String(req.user?.role || "").trim().toLowerCase();
+        const targetRole = String(targetUser.role || "").trim().toLowerCase();
+
+        if (requesterRole === "hr" && ["admin", "main_admin", "superadmin"].includes(targetRole)) {
+            return res.status(403).json({
+                success: false,
+                message: "HR cannot assign salary records for admin accounts"
+            });
+        }
+
         const netPay = (Number(basicSalary) + Number(bonus || 0)) - Number(deductions || 0);
 
         const payroll = await Payroll.findOneAndUpdate(

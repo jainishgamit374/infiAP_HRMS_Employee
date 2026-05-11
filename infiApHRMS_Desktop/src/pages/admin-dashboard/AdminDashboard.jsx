@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAdminDashboard } from '../../context/AdminDashboardContext';
+import { getEmployees, processSalary } from '../../services/hrApi';
 import {
    Building2,
    Users,
@@ -14,16 +15,111 @@ import {
    Clock3,
    Sparkles,
    BarChart3,
-   Layers
+   Layers,
+   Wallet,
+   X,
+   Check
 } from 'lucide-react';
+
+const MONTHS = [
+   { value: 1, label: 'January' }, { value: 2, label: 'February' }, { value: 3, label: 'March' },
+   { value: 4, label: 'April' }, { value: 5, label: 'May' }, { value: 6, label: 'June' },
+   { value: 7, label: 'July' }, { value: 8, label: 'August' }, { value: 9, label: 'September' },
+   { value: 10, label: 'October' }, { value: 11, label: 'November' }, { value: 12, label: 'December' }
+];
+
+const formatCurrency = (value) => {
+   const num = Number(value || 0);
+   if (Number.isNaN(num)) return '₹0';
+   return `₹${num.toLocaleString('en-IN')}`;
+};
 
 const AdminDashboard = () => {
    const navigate = useNavigate();
     const { user } = useAuth();
    const { summary, insights, departments, teams, jobs, staffDirectory, pendingLeaves, activities, loading } = useAdminDashboard();
 
-   const toNumber = (value) => Number(value || 0);
-   const formatCurrency = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(toNumber(value));
+   // Salary assignment state
+   const [assignModalOpen, setAssignModalOpen] = useState(false);
+   const [employeeList, setEmployeeList] = useState([]);
+   const [selectedEmployee, setSelectedEmployee] = useState(null);
+   const [assignForm, setAssignForm] = useState({
+      employeeId: '',
+      basicSalary: '',
+      deductions: '',
+      month: new Date().getMonth() + 1,
+      year: new Date().getFullYear()
+   });
+   const [processingId, setProcessingId] = useState(null);
+   const [notification, setNotification] = useState(null);
+
+   const showNotification = (msg) => {
+      setNotification(msg);
+      setTimeout(() => setNotification(null), 3000);
+   };
+
+   const openAssignModal = async () => {
+      try {
+         const empRes = await getEmployees();
+         const employees = empRes?.data?.data || empRes?.data || [];
+         // Filter out admins - only show employees
+         const filteredEmployees = employees.filter(emp =>
+            emp.role !== 'admin' && emp.role !== 'main_admin' && emp.role !== 'superadmin'
+         );
+         setEmployeeList(filteredEmployees);
+         setAssignForm({
+            employeeId: '',
+            basicSalary: '',
+            deductions: '',
+            month: new Date().getMonth() + 1,
+            year: new Date().getFullYear()
+         });
+         setSelectedEmployee(null);
+         setAssignModalOpen(true);
+      } catch (err) {
+         console.error('Failed to load employees:', err);
+         showNotification('Failed to load employees');
+      }
+   };
+
+   const closeAssignModal = () => {
+      setAssignModalOpen(false);
+      setSelectedEmployee(null);
+   };
+
+   const handleEmployeeSelect = (e) => {
+      const empId = e.target.value;
+      const emp = employeeList.find(em => em._id === empId);
+      setSelectedEmployee(emp);
+      setAssignForm(prev => ({ ...prev, employeeId: empId }));
+   };
+
+   const handleAssignSalary = async (e) => {
+      e.preventDefault();
+      if (!selectedEmployee) return;
+      setProcessingId(selectedEmployee._id);
+      try {
+         const monthLabel = MONTHS.find((m) => m.value === Number(assignForm.month))?.label || 'January';
+         const payload = {
+            userId: selectedEmployee._id,
+            basicSalary: Number(assignForm.basicSalary),
+            bonus: 0,
+            deductions: Number(assignForm.deductions),
+            month: monthLabel,
+            year: Number(assignForm.year),
+            status: 'Pending'
+         };
+         await processSalary(payload);
+         showNotification(`Salary assigned to ${selectedEmployee.name}`);
+         closeAssignModal();
+      } catch (err) {
+         console.error('Failed to assign salary:', err);
+         const msg = err?.response?.data?.message || err?.message || 'Failed to assign salary';
+         showNotification(msg);
+      } finally {
+         setProcessingId(null);
+      }
+   };
 
    const stats = useMemo(() => [
       {
@@ -76,6 +172,115 @@ const AdminDashboard = () => {
 
    return (
       <div className="space-y-8 animate-in fade-in duration-700 pb-20">
+         {/* Notification */}
+         {notification && (
+            <div className="fixed top-20 right-6 z-50 flex items-center gap-2 bg-slate-900 text-white px-4 py-2.5 rounded-lg shadow-lg">
+               <Check size={16} className="text-emerald-400" />
+               <span className="text-sm">{notification}</span>
+            </div>
+         )}
+
+         {/* Assign Salary Modal */}
+         {assignModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+               <div className="absolute inset-0 bg-black/40" onClick={closeAssignModal} />
+               <div className="relative bg-white w-full max-w-md rounded-xl shadow-xl p-6">
+                  <div className="flex items-center justify-between mb-5">
+                     <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+                           <Wallet size={20} className="text-indigo-600" />
+                        </div>
+                        <div>
+                           <h3 className="text-base font-semibold text-slate-800">Assign Salary</h3>
+                           <p className="text-xs text-slate-400">Set salary for employee</p>
+                        </div>
+                     </div>
+                     <button onClick={closeAssignModal} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                        <X size={18} />
+                     </button>
+                  </div>
+                  <form onSubmit={handleAssignSalary} className="space-y-4">
+                     <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Select Employee</label>
+                        <select
+                           className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors bg-white"
+                           value={assignForm.employeeId}
+                           onChange={handleEmployeeSelect}
+                           required
+                        >
+                           <option value="">Choose employee...</option>
+                           {employeeList.map((emp) => (
+                              <option key={emp._id} value={emp._id}>
+                                 {emp.name} ({emp.employeeId || emp.designation || 'Employee'})
+                              </option>
+                           ))}
+                        </select>
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                           <label className="block text-xs font-medium text-slate-500 mb-1">Month</label>
+                           <select
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors bg-white"
+                              value={assignForm.month}
+                              onChange={(e) => setAssignForm((prev) => ({ ...prev, month: Number(e.target.value) }))}
+                              required
+                           >
+                              {MONTHS.map((m) => (
+                                 <option key={m.value} value={m.value}>{m.label}</option>
+                              ))}
+                           </select>
+                        </div>
+                        <div>
+                           <label className="block text-xs font-medium text-slate-500 mb-1">Year</label>
+                           <input
+                              type="number" min={2000} max={2100}
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors"
+                              value={assignForm.year}
+                              onChange={(e) => setAssignForm((prev) => ({ ...prev, year: e.target.value }))}
+                              required
+                           />
+                        </div>
+                     </div>
+                     <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Basic Salary (₹)</label>
+                        <input
+                           type="number" min={0}
+                           placeholder="e.g. 50000"
+                           className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors"
+                           value={assignForm.basicSalary}
+                           onChange={(e) => setAssignForm((prev) => ({ ...prev, basicSalary: e.target.value }))}
+                           required
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Deductions (₹)</label>
+                        <input
+                           type="number" min={0}
+                           placeholder="e.g. 5000"
+                           className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 transition-colors"
+                           value={assignForm.deductions}
+                           onChange={(e) => setAssignForm((prev) => ({ ...prev, deductions: e.target.value }))}
+                           required
+                        />
+                     </div>
+                     <div className="p-3 bg-slate-50 rounded-lg">
+                        <p className="text-xs text-slate-400 mb-0.5">Net Salary</p>
+                        <p className="text-lg font-bold text-slate-800">
+                           {formatCurrency((Number(assignForm.basicSalary) || 0) - (Number(assignForm.deductions) || 0))}
+                        </p>
+                     </div>
+                     <button
+                        type="submit"
+                        disabled={processingId || !selectedEmployee}
+                        className="w-full py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors disabled:opacity-50"
+                     >
+                        {processingId ? 'Saving...' : 'Assign Salary'}
+                     </button>
+                  </form>
+               </div>
+            </div>
+         )}
+
          <div className="flex flex-col gap-3 border-b border-slate-100 pb-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
                <h1 className="text-3xl font-black text-slate-900 tracking-tight leading-none mb-2 uppercase">Admin Dashboard</h1>
@@ -104,6 +309,22 @@ const AdminDashboard = () => {
                         <p className="mt-2 text-[9px] font-black uppercase tracking-widest text-slate-300">{stat.helper}</p>
                      </div>
                   ))}
+                  {/* Salary Assignment Card */}
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 col-span-2">
+                     <div className="flex items-center justify-between">
+                        <div>
+                           <Wallet size={16} className="text-indigo-500 mb-3" />
+                           <p className="text-lg font-black text-slate-900 leading-none mb-1">Assign Salary</p>
+                           <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Set employee salary</p>
+                        </div>
+                        <button
+                           onClick={openAssignModal}
+                           className="px-4 py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-800 transition-colors"
+                        >
+                           Assign
+                        </button>
+                     </div>
+                  </div>
                </div>
             </div>
             <div className="rounded-[32px] border border-slate-100 bg-white p-8 shadow-sm">
