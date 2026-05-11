@@ -13,7 +13,7 @@ import { useAdminDashboard } from '../../context/AdminDashboardContext';
 
 const Departments = () => {
   const navigate = useNavigate();
-  const { departments, totals, fetchDepartments, loading } = useAdminDashboard();
+  const { departments, summary, fetchDepartments, loading } = useAdminDashboard();
 
   useEffect(() => {
     fetchDepartments();
@@ -22,9 +22,23 @@ const Departments = () => {
 
   const overviewStats = useMemo(() => ([
     { label: 'Departments', value: String(departments.length), icon: Building2 },
-    { label: 'Teams', value: String(departments.reduce((count, department) => count + (Number(department.teams) || 0), 0)), icon: LayoutGrid },
-    { label: 'Employees', value: String(departments.reduce((count, department) => count + (Number(department.employees) || 0), 0)), icon: Users },
-  ]), [departments]);
+    {
+      label: 'Teams',
+      value: String(
+        Number(summary?.teams) ||
+        departments.reduce((count, department) => count + (Number(department.teams) || 0), 0)
+      ),
+      icon: LayoutGrid
+    },
+    {
+      label: 'Employees',
+      value: String(
+        Number(summary?.totalEmployees || summary?.employees) ||
+        departments.reduce((count, department) => count + (Number(department.employees) || 0), 0)
+      ),
+      icon: Users
+    },
+  ]), [departments, summary]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">

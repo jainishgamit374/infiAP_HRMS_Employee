@@ -4,15 +4,6 @@ import { useAuth } from './AuthContext';
 
 const AdminDashboardContext = createContext();
 
-const managerNameMap = {
-  rahul: 'Rahul Sharma',
-  priya: 'Priya Kapur',
-  amit: 'Amit Verma',
-  sneha: 'Sneha Desai',
-  rohan: 'Rohan Sharma',
-  vikas: 'Vikas Roy'
-};
-
 const defaultDepartments = [
   {
     id: 'dept_fallback_1',
@@ -278,11 +269,17 @@ export const AdminDashboardProvider = ({ children }) => {
   };
 
   const addDepartment = async (payload) => {
+    const parsedTeams = Number(payload.teams);
     const requestPayload = {
+      departmentName: payload.name,
       name: payload.name,
       description: payload.description,
-      head: managerNameMap[payload.manager] || payload.manager,
-      teams: Number(payload.teams) || 0,
+      departmentHead: payload.manager,
+      head: payload.manager,
+      departmentCategory: 'tech',
+      category: 'tech',
+      numberOfTeams: Number.isNaN(parsedTeams) ? 0 : parsedTeams,
+      teams: Number.isNaN(parsedTeams) ? 0 : parsedTeams,
       color: 'indigo'
     };
 
@@ -290,6 +287,7 @@ export const AdminDashboardProvider = ({ children }) => {
       const res = await api.post('/admin-dashboard/departments', requestPayload);
       const created = normalizeDepartment(res.data?.data || requestPayload);
       setDepartments((prev) => [created, ...prev]);
+      await fetchDepartments();
       await fetchSummary();
       return { success: true, data: created };
     } catch (error) {
@@ -307,8 +305,8 @@ export const AdminDashboardProvider = ({ children }) => {
   const addTeam = async (payload) => {
     const requestPayload = {
       name: payload.name,
-      department: payload.department,
-      lead: managerNameMap[payload.lead] || payload.lead,
+      departmentId: payload.department,
+      lead: payload.lead,
       capacity: Number(payload.capacity) || 0,
       mission: payload.mission
     };
