@@ -23,8 +23,11 @@ const configuredOrigins = (process.env.CORS_ORIGIN || "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const isLocalOrigin = (origin) =>
-  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+const isLocalOrigin = (origin) => {
+  // Allow localhost, 127.0.0.1, and private IP ranges (10.x, 172.16-31.x, 192.168.x)
+  const localPattern = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)(:\d+)?$/i;
+  return localPattern.test(origin);
+};
 
 const allowCorsOrigin = (origin, callback) => {
   if (!origin) {

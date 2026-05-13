@@ -1,14 +1,19 @@
 // Environment configuration for API URLs
-// Use Vite's environment variable system
+// Use relative paths - Vite proxy handles the routing
 
 const getApiUrl = () => {
-  return import.meta.env.VITE_API_URL || 'http://localhost:3000';
+  // Use relative path so Vite proxy handles it (works across devices)
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  // Default to relative path - proxy to backend
+  return '';
 };
 
 export const API_CONFIG = {
   baseURL: getApiUrl(),
-  uploadsURL: `${getApiUrl()}/uploads`,
-  socketURL: getApiUrl(),
+  uploadsURL: '/uploads',
+  socketURL: '',
 };
 
 export default API_CONFIG;
