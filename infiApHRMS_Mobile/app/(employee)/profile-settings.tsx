@@ -123,7 +123,8 @@ export default function ProfileSettingsPage() {
         <View style={styles.section}>
           {renderSectionHeader('information-circle-outline', 'Support & Legal')}
           {renderItem('Contact HR', 'For any queries or assistance', false, false, false, undefined, 'mail-outline', handleContactHR)}
-          {renderItem('Privacy Policy', undefined, true)}
+          {renderItem('Terms of Service', undefined, true, false, false, undefined, undefined, () => router.push('/(employee)/terms-of-service'))}
+          {renderItem('Privacy Policy', undefined, true, false, false, undefined, undefined, () => router.push('/(employee)/privacy-policy'))}
         </View>
 
         {/* Logout */}
