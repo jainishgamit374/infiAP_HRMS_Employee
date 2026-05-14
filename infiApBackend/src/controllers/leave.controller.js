@@ -1,5 +1,6 @@
 const LeaveApplication = require("../models/leaveApplication.model");
 const User = require("../models/user.model");
+const { notifyUser } = require("../utils/notifier");
 
 const normalizeLeaveDate = (value) => {
     if (typeof value === "string") {
@@ -171,17 +172,45 @@ exports.getLeaveApprovals = async (req, res) => {
     }
 };
 
-// 4. Approve Leave (POST /allapprove/)
+// 4. Approve / Reject Leave (POST /allapprove/)
 exports.approveLeave = async (req, res) => {
     try {
-        const { ProgramID, TranID, Reason } = req.body;
-        
-        // This would update LeaveApplication where _id == TranID
-        
+        const { ProgramID, TranID, Reason, Action } = req.body;
+        const approverID = req.user ? req.user._id : null;
+        const approverName = (req.user && req.user.name) || "Approver";
+        const isReject = String(Action || "").toLowerCase() === "reject";
+
+        const updated = await LeaveApplication.findByIdAndUpdate(
+            TranID,
+            {
+                ApprovalStatusID: isReject ? 4 : 1,
+                ApprovalStatus: isReject ? "Rejected" : "Approved",
+                ApproverID: approverID,
+                ApprovalUsername: approverName,
+            },
+            { new: true }
+        );
+
+        if (updated && updated.EmployeeID) {
+            const dateRange =
+                updated.StartDate && updated.EndDate
+                    ? ` (${new Date(updated.StartDate).toDateString()} - ${new Date(updated.EndDate).toDateString()})`
+                    : "";
+            await notifyUser({
+                recipient: updated.EmployeeID,
+                category: "leave",
+                headline: isReject ? "Leave Request Rejected" : "Leave Request Approved",
+                details: isReject
+                    ? `Your ${updated.LeaveType} leave${dateRange} was rejected by ${approverName}.${Reason ? " Reason: " + Reason : ""}`
+                    : `Your ${updated.LeaveType} leave${dateRange} has been approved by ${approverName}.`,
+                sentBy: approverID,
+            });
+        }
+
         res.status(200).json({
             status: "Success",
             statusCode: 200,
-            message: "Approval updated successfully."
+            message: isReject ? "Leave rejected." : "Approval updated successfully."
         });
     } catch (error) {
         res.status(500).json({ status: "Error", message: "Failed to approve leave", error: error.message });

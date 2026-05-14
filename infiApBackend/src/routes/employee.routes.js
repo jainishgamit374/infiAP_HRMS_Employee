@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const employeeController = require("../controllers/employee.controller");
 const { verifyJWT } = require("../middlewares/auth.middleware");
+const { verifyRole } = require("../middlewares/role.middleware");
 
 // Optionally use JWT middleware here to protect these routes
 // const { verifyJWT } = require("../middlewares/auth.middleware");
@@ -111,6 +112,7 @@ router.post("/leave/requests/history", employeeController.getHistoryLeaveRequest
 router.post("/payroll/current", employeeController.getPayrollCurrent);
 router.post("/payroll/history", employeeController.getPayrollHistory);
 router.post("/payroll/details", employeeController.getPayrollDetails);
+router.post("/payroll/notify-processed", verifyJWT, verifyRole(["hr", "admin", "superadmin"]), employeeController.notifyPayrollProcessed);
 
 // Performance Management Granular APIs (Reusable - POST for GET)
 router.post("/performance/current", employeeController.getEmployeePerformance);

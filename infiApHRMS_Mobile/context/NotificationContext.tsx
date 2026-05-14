@@ -1,5 +1,10 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { ADMIN_API_URL } from '../constants/api';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  fetchMyNotifications,
+  markAllNotificationsRead as apiMarkAllRead,
+  markNotificationRead as apiMarkRead,
+  type ApiNotification,
+} from '../services/auth';
 
 export type NotificationType = 'leave' | 'attendance' | 'payroll' | 'performance' | 'system';
 
@@ -25,23 +30,6 @@ export interface Notification {
   route?: string;
 }
 
-type NotificationApiRecord = {
-  id?: string;
-  _id?: string;
-  category?: string;
-  headline?: string;
-  title?: string;
-  details?: string;
-  scheduleAt?: string;
-  createdAt?: string;
-  sentBy?: string;
-};
-
-type NotificationsApiResponse = {
-  status?: string;
-  data?: NotificationApiRecord[];
-};
-
 interface NotificationContextType {
   notifications: Notification[];
   isLoading: boolean;
@@ -50,6 +38,8 @@ interface NotificationContextType {
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   getNotificationById: (id: string) => Notification | undefined;
+  toast: Notification | null;
+  dismissToast: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -71,65 +61,107 @@ const getNotificationRoute = (type: NotificationType) => {
   return undefined;
 };
 
-const mapNotification = (record: NotificationApiRecord, index: number): Notification => {
+const formatRelativeTime = (iso?: string) => {
+  if (!iso) return 'Just now';
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return 'Just now';
+  const diff = Date.now() - then;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString();
+};
+
+const mapNotification = (record: ApiNotification, index: number): Notification => {
   const type = getNotificationType(record.category);
+  const createdIso = record.createdAt || record.scheduleAt || undefined;
   return {
-    id: record.id || record._id || `notification-${index + 1}`,
+    id: record.id || `notification-${index + 1}`,
     type,
-    title: record.headline || record.title || 'Notification',
+    title: record.headline || 'Notification',
     message: (record.details || '').slice(0, 120),
     description: record.details || '',
-    time: record.scheduleAt ? new Date(record.scheduleAt).toLocaleString() : 'Just now',
-    timestamp: record.createdAt || new Date().toISOString(),
-    isRead: false,
-    sender: record.sentBy || 'System',
+    time: formatRelativeTime(createdIso),
+    timestamp: createdIso || new Date().toISOString(),
+    isRead: !!record.isRead,
+    sender: 'System',
     division: 'General',
     isOnline: true,
     route: getNotificationRoute(type),
   };
 };
 
+const POLL_INTERVAL_MS = 30000;
+
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<Notification | null>(null);
+  const seenIdsRef = useRef<Set<string>>(new Set());
+  const isFirstLoadRef = useRef(true);
 
   const refreshNotifications = useCallback(async () => {
     try {
-      setIsLoading(true);
       setError(null);
-      const response = await fetch(`${ADMIN_API_URL}/notifications`);
-      const json = (await response.json()) as NotificationsApiResponse;
+      const response = await fetchMyNotifications();
+      const records = Array.isArray(response.data) ? response.data : [];
+      const mapped = records.map(mapNotification);
 
-      if (!response.ok) {
-        throw new Error('Unable to fetch notifications.');
+      // On first successful load, seed seenIds (no popup for existing items).
+      if (isFirstLoadRef.current) {
+        mapped.forEach((n) => seenIdsRef.current.add(n.id));
+        isFirstLoadRef.current = false;
+      } else {
+        // Find newest unseen unread notification to surface as a toast.
+        const newOnes = mapped.filter((n) => !seenIdsRef.current.has(n.id) && !n.isRead);
+        newOnes.forEach((n) => seenIdsRef.current.add(n.id));
+        if (newOnes.length > 0) {
+          setToast(newOnes[0]);
+        }
       }
 
-      const records = Array.isArray(json.data) ? json.data : [];
-      setNotifications(records.map(mapNotification));
+      setNotifications(mapped);
     } catch (fetchError) {
-      setNotifications([]);
+      // Don't wipe existing list on transient error.
       setError(fetchError instanceof Error ? fetchError.message : 'Unable to load notifications.');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     refreshNotifications();
+    const id = setInterval(() => {
+      refreshNotifications();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
   }, [refreshNotifications]);
 
-  const markAsRead = (id: string) => {
+  const markAsRead = useCallback((id: string) => {
     setNotifications((prev) =>
       prev.map((item) => (item.id === id ? { ...item, isRead: true } : item))
     );
-  };
+    apiMarkRead(id).catch(() => {
+      // Non-fatal: revert handled on next poll.
+    });
+  }, []);
 
-  const markAllAsRead = () => {
+  const markAllAsRead = useCallback(() => {
     setNotifications((prev) => prev.map((item) => ({ ...item, isRead: true })));
-  };
+    apiMarkAllRead().catch(() => {});
+  }, []);
 
-  const getNotificationById = (id: string) => notifications.find((item) => item.id === id);
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  const getNotificationById = useCallback(
+    (id: string) => notifications.find((item) => item.id === id),
+    [notifications]
+  );
 
   const value = useMemo(
     () => ({
@@ -140,8 +172,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       markAsRead,
       markAllAsRead,
       getNotificationById,
+      toast,
+      dismissToast,
     }),
-    [notifications, isLoading, error, refreshNotifications]
+    [notifications, isLoading, error, refreshNotifications, markAsRead, markAllAsRead, getNotificationById, toast, dismissToast]
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

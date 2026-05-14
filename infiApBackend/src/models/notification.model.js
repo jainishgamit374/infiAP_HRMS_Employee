@@ -4,9 +4,27 @@ const notificationSchema = new mongoose.Schema(
     {
         category: {
             type: String,
-            enum: ["announcement", "policy", "alert"],
+            enum: ["announcement", "policy", "alert", "leave", "payroll", "attendance", "performance", "system"],
             required: true
         },
+        recipient: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            index: true
+        },
+        readAt: {
+            type: Date
+        },
+        readBy: [{
+            user: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User"
+            },
+            readAt: {
+                type: Date,
+                default: Date.now
+            }
+        }],
         headline: {
             type: String,
             required: true,
@@ -19,8 +37,8 @@ const notificationSchema = new mongoose.Schema(
         },
         targetedAudience: {
             type: String,
-            enum: ["all_employee", "department", "hr"],
-            required: true
+            enum: ["all_employee", "department", "hr", "user"],
+            default: "user"
         },
         targetDepartments: [{
             type: String,

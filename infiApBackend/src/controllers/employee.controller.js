@@ -5,6 +5,7 @@ const LeaveApplication = require("../models/leaveApplication.model");
 const EmployeeOfTheMonth = require("../models/employeeOfTheMonth.model");
 const Holiday = require("../models/holiday.model");
 const moment = require("moment");
+const { notifyUser } = require("../utils/notifier");
 
 const normalizeLeaveDate = (value) => {
     if (typeof value === "string") {
@@ -716,20 +717,44 @@ exports.getPendingApprovals = async (req, res) => {
     }
 };
 
-// 15. Approve Activity
+// 15. Approve / Reject Activity
 exports.approveActivity = async (req, res) => {
     try {
-        const { ProgramID, TranID, Reason } = req.body;
+        const { ProgramID, TranID, Reason, Action } = req.body;
         const approverID = req.user ? req.user._id : "656b23d91f4a9b2b2c3d4e5f";
+        const approverName = (req.user && req.user.name) || "Approver";
+        const isReject = String(Action || "").toLowerCase() === "reject";
 
         // ProgramID 2 corresponds to Leave Request etc.
         if (ProgramID === 2) {
-            await LeaveApplication.findByIdAndUpdate(TranID, {
-                ApprovalStatusID: 1, // 1: Approved
-                ApprovalStatus: "Approved",
-                ApproverID: approverID,
-                ApprovalUsername: "Approver",
-            });
+            const updated = await LeaveApplication.findByIdAndUpdate(
+                TranID,
+                {
+                    ApprovalStatusID: isReject ? 4 : 1, // 1: Approved, 4: Rejected
+                    ApprovalStatus: isReject ? "Rejected" : "Approved",
+                    ApproverID: approverID,
+                    ApprovalUsername: approverName,
+                },
+                { new: true }
+            );
+
+            if (updated && updated.EmployeeID) {
+                const dateRange =
+                    updated.StartDate && updated.EndDate
+                        ? ` (${new Date(updated.StartDate).toDateString()} - ${new Date(updated.EndDate).toDateString()})`
+                        : "";
+                await notifyUser({
+                    recipient: updated.EmployeeID,
+                    category: "leave",
+                    headline: isReject
+                        ? `Leave Request Rejected`
+                        : `Leave Request Approved`,
+                    details: isReject
+                        ? `Your ${updated.LeaveType} leave${dateRange} was rejected by ${approverName}.${Reason ? " Reason: " + Reason : ""}`
+                        : `Your ${updated.LeaveType} leave${dateRange} has been approved by ${approverName}.`,
+                    sentBy: approverID,
+                });
+            }
         }
 
         // Similarly handle other ProgramIDs like Missed Punch, WFH...
@@ -737,7 +762,7 @@ exports.approveActivity = async (req, res) => {
         res.status(200).json({
             status: "Success",
             statusCode: 200,
-            message: "Approval updated successfully."
+            message: isReject ? "Leave rejected." : "Approval updated successfully."
         });
     } catch (error) {
         res.status(500).json({ status: "Error", message: "Failed to approve activity", error: error.message });
@@ -1427,6 +1452,30 @@ exports.getHistoryLeaveRequests = async (req, res) => {
         res.status(200).json({ status: "Success", total: requests.length, data: requests });
     } catch (error) {
         res.status(500).json({ message: "Failed to fetch historical requests", error: error.message });
+    }
+};
+
+// 41b. Notify employee that payroll has been processed
+exports.notifyPayrollProcessed = async (req, res) => {
+    try {
+        const { employeeId, month, netAmount } = req.body;
+        if (!employeeId) {
+            return res.status(400).json({ status: "Error", message: "employeeId is required" });
+        }
+        const monthLabel = month || new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+        const amountText = netAmount ? ` (₹${Number(netAmount).toLocaleString("en-IN")})` : "";
+
+        await notifyUser({
+            recipient: employeeId,
+            category: "payroll",
+            headline: "Payroll Processed",
+            details: `Your salary for ${monthLabel}${amountText} has been processed and credited.`,
+            sentBy: req.user ? req.user._id : null,
+        });
+
+        res.status(200).json({ status: "Success", message: "Payroll notification sent." });
+    } catch (error) {
+        res.status(500).json({ status: "Error", message: "Failed to send payroll notification", error: error.message });
     }
 };
 

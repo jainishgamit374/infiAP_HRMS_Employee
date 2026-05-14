@@ -513,22 +513,46 @@ export const fetchAllEmployees = async () => {
 };
 
 export type PayrollCurrentData = {
+  _id?: string;
+  id?: number | string;
   month: string;
-  grossSalary: number;
-  netSalary: number;
-  earnings: { category: string; amount: number }[];
-  deductions: { category: string; amount: number }[];
+  year?: number | string;
+  userId?: string;
+  basicSalary?: number;
+  allowances?: number;
+  bonus?: number;
+  gross?: number;
+  grossSalary?: number;
+  deductions?: number | { category: string; amount: number }[];
+  net?: number;
+  netPay?: number;
+  netSalary?: number;
+  earnings?: { category: string; amount: number }[];
   paidAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   status?: string;
 };
 
 export type PayrollHistoryItem = {
-  id: number | string;
-  monthYear: string;
-  gross: number;
-  net: number;
+  id?: number | string;
+  _id?: string;
+  month?: string;
+  year?: number | string;
+  monthYear?: string;
+  basicSalary?: number;
+  allowances?: number;
+  bonus?: number;
+  deductions?: number;
+  gross?: number;
+  grossSalary?: number;
+  net?: number;
+  netPay?: number;
+  netSalary?: number;
   status: string;
-  paidAt: string;
+  paidAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   downloadUrl?: string;
 };
 
@@ -540,6 +564,43 @@ export type PayrollHistoryData = {
     avgPeriod: string;
   };
   paymentHistory: PayrollHistoryItem[];
+};
+
+export type ApiNotification = {
+  id: string;
+  category: 'announcement' | 'policy' | 'alert' | 'leave' | 'payroll' | 'attendance' | 'performance' | 'system';
+  headline: string;
+  details: string;
+  scheduleAt?: string | null;
+  status?: string;
+  recipient?: string | null;
+  readAt?: string | null;
+  isRead?: boolean;
+  createdAt?: string;
+};
+
+export const fetchMyNotifications = async () => {
+  const headers = await getAuthHeaders();
+  return request<{ status: string; data: ApiNotification[] }>('/notifications/me', {
+    method: 'GET',
+    headers,
+  });
+};
+
+export const markNotificationRead = async (id: string) => {
+  const headers = await getAuthHeaders();
+  return request<{ status: string; data: ApiNotification }>(`/notifications/${id}/read`, {
+    method: 'PATCH',
+    headers,
+  });
+};
+
+export const markAllNotificationsRead = async () => {
+  const headers = await getAuthHeaders();
+  return request<{ status: string; message: string }>(`/notifications/me/read-all`, {
+    method: 'PATCH',
+    headers,
+  });
 };
 
 export const fetchPayrollCurrent = async () => {

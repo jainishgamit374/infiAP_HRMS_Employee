@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Platform, StatusBar, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Modal, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { BottomNav } from '../../components/BottomNav';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 import {
   fetchPayrollCurrent,
@@ -14,29 +13,25 @@ import {
   type PayrollHistoryItem,
 } from '../../services/auth';
 import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withTiming, 
-  withDelay,
   FadeInDown,
   FadeInRight,
-  ZoomIn,
-  ZoomOut,
   SlideInUp,
 } from 'react-native-reanimated';
-
-const { width } = Dimensions.get('window');
-
-const formatFileName = (month: string) => `infiap-payslip-${month.replace(/\s+/g, '-').toLowerCase()}.pdf`;
 
 const buildPayslipHtml = ({
   month,
   salary,
   payDate,
+  status,
+  earnings,
+  deductions,
 }: {
   month: string;
   salary: string;
   payDate: string;
+  status: string;
+  earnings: { category: string; amount: number }[];
+  deductions: { category: string; amount: number }[];
 }) => `
   <!doctype html>
   <html>
@@ -141,12 +136,12 @@ const buildPayslipHtml = ({
           <div class="muted">Salary Slip • ${month}</div>
           <div class="muted">Pay Date: ${payDate}</div>
         </div>
-        <div class="badge">PAID</div>
+        <div class="badge">${status.toUpperCase()}</div>
       </div>
 
       <div class="summary">
         <div class="summary-title">Net Payable Salary</div>
-        <div class="amount">${salary}.00</div>
+        <div class="amount">${salary}</div>
       </div>
 
       <table>
@@ -157,18 +152,14 @@ const buildPayslipHtml = ({
           </tr>
         </thead>
         <tbody>
-          <tr><td>Basic Salary</td><td>₹25,000.00</td></tr>
-          <tr><td>HRA (House Rent Allowance)</td><td>₹0.00</td></tr>
-          <tr><td>Conv. Allowance</td><td>₹0.00</td></tr>
-          <tr><td>Special Allowance</td><td>₹0.00</td></tr>
-          <tr><td class="deduction">Professional Tax (PT)</td><td class="deduction">-₹0.00</td></tr>
-          <tr><td class="deduction">Other Deductions</td><td class="deduction">-₹0.00</td></tr>
+          ${earnings.map(row => `<tr><td>${row.category}</td><td>${formatINR(row.amount)}</td></tr>`).join('')}
+          ${deductions.map(row => `<tr><td class="deduction">${row.category}</td><td class="deduction">-${formatINR(row.amount)}</td></tr>`).join('')}
         </tbody>
       </table>
 
       <div class="total">
         <span>Total Net Pay</span>
-        <span>₹25,000.00</span>
+        <span>${salary}</span>
       </div>
 
       <div class="footer">This computer-generated payslip does not require a signature.</div>
@@ -176,9 +167,16 @@ const buildPayslipHtml = ({
   </html>
 `;
 
-const createPayslipPdf = async (month: string, salary: string, payDate: string) => {
+const createPayslipPdf = async (
+  month: string,
+  salary: string,
+  payDate: string,
+  status: string,
+  earnings: { category: string; amount: number }[],
+  deductions: { category: string; amount: number }[],
+) => {
   const result = await Print.printToFileAsync({
-    html: buildPayslipHtml({ month, salary, payDate }),
+    html: buildPayslipHtml({ month, salary, payDate, status, earnings, deductions }),
     base64: false,
   });
   return result.uri;
@@ -188,6 +186,35 @@ const createPayslipPdf = async (month: string, salary: string, payDate: string) 
 
 const formatINR = (n: number) =>
   `₹${(Number.isFinite(n) ? n : 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+const formatMonthYear = (month?: string, year?: number | string) =>
+  [month, year].filter(Boolean).join(' ') || '—';
+
+const getNetPay = (item?: PayrollCurrentData | PayrollHistoryItem | null) =>
+  Number(item?.netSalary ?? item?.netPay ?? item?.net ?? 0);
+
+const getDeductionTotal = (item?: PayrollCurrentData | PayrollHistoryItem | null) => {
+  if (Array.isArray(item?.deductions)) {
+    return item.deductions.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  }
+  return Number(item?.deductions ?? 0);
+};
+
+const getEarningsRows = (item?: PayrollCurrentData | null) => {
+  if (item?.earnings?.length) return item.earnings;
+  if (!item) return [];
+  return [
+    { category: 'Basic Salary', amount: Number(item.basicSalary ?? 0) },
+    { category: 'Allowances', amount: Number(item.allowances ?? 0) },
+    { category: 'Bonus', amount: Number(item.bonus ?? 0) },
+  ].filter(row => row.amount > 0 || row.category === 'Basic Salary');
+};
+
+const getDeductionRows = (item?: PayrollCurrentData | null) => {
+  if (Array.isArray(item?.deductions)) return item.deductions;
+  const total = getDeductionTotal(item);
+  return total > 0 ? [{ category: 'Deductions', amount: total }] : [];
+};
 
 export default function PayrollDashboard() {
   const [detailsVisible, setDetailsVisible] = useState(false);
@@ -204,7 +231,7 @@ export default function PayrollDashboard() {
         const [cur, hist] = await Promise.all([fetchPayrollCurrent(), fetchPayrollHistory()]);
         if (!isMounted) return;
         setCurrent(cur.data);
-        setHistoryData(hist.data?.paymentHistory || []);
+        setHistoryData(hist.data?.paymentHistory || (Array.isArray(hist.data as any) ? (hist.data as any) : []));
       } catch (error) {
         console.warn('Failed to load payroll:', error);
       } finally {
@@ -216,16 +243,25 @@ export default function PayrollDashboard() {
     };
   }, []);
 
-  const currentMonth = current?.month || '';
-  const currentSalary = current ? formatINR(current.netSalary) : '—';
-  const payDate = current?.paidAt || (current ? current.month : '');
+  const currentMonth = current ? formatMonthYear(current.month, current.year) : '';
+  const currentSalary = current ? formatINR(getNetPay(current)) : '—';
+  const payDate = current?.paidAt || current?.updatedAt || current?.createdAt || (current ? currentMonth : '');
   const statusLabel = current?.status || 'PAID';
+  const earningsRows = getEarningsRows(current);
+  const deductionRows = getDeductionRows(current);
 
   const handleDownload = async () => {
     if (downloading) return;
     setDownloading(true);
     try {
-      const html = buildPayslipHtml({ month: currentMonth, salary: currentSalary, payDate });
+      const html = buildPayslipHtml({
+        month: currentMonth,
+        salary: currentSalary,
+        payDate,
+        status: statusLabel,
+        earnings: earningsRows,
+        deductions: deductionRows,
+      });
       // Open the native print dialog which has a built-in "Save as PDF" option
       // on both iOS (AirPrint -> Save to Files) and Android (PDF Printer -> Save).
       await Print.printAsync({ html });
@@ -249,7 +285,14 @@ export default function PayrollDashboard() {
         return;
       }
 
-      const pdfUri = await createPayslipPdf(currentMonth, currentSalary, payDate);
+      const pdfUri = await createPayslipPdf(
+        currentMonth,
+        currentSalary,
+        payDate,
+        statusLabel,
+        earningsRows,
+        deductionRows,
+      );
       await Sharing.shareAsync(pdfUri, {
         mimeType: 'application/pdf',
         dialogTitle: `${currentMonth} Salary Slip`,
@@ -338,7 +381,7 @@ export default function PayrollDashboard() {
           ) : (
             historyData.map((item, index) => (
               <Animated.View 
-                key={String(item.id)}
+                key={String(item.id || item._id)}
                 entering={FadeInRight.delay(500 + index * 100).springify()}
                 style={styles.historyCard}
               >
@@ -348,8 +391,8 @@ export default function PayrollDashboard() {
                       <Ionicons name="document-text-outline" size={24} color="#64748b" />
                     </View>
                     <View>
-                      <Text style={styles.historyMonth}>{item.monthYear}</Text>
-                      <Text style={styles.historySub}>NET SALARY: {formatINR(item.net)}</Text>
+                      <Text style={styles.historyMonth}>{item.monthYear || formatMonthYear(item.month, item.year)}</Text>
+                      <Text style={styles.historySub}>NET SALARY: {formatINR(getNetPay(item))}</Text>
                     </View>
                   </View>
                   <View style={styles.historyTrailing}>
@@ -364,7 +407,7 @@ export default function PayrollDashboard() {
                         item.status === 'On Going' && { color: '#2563eb' }
                       ]}>{item.status}</Text>
                     </View>
-                    <Text style={styles.historyDate}>{item.paidAt}</Text>
+                    <Text style={styles.historyDate}>{item.paidAt || item.updatedAt || item.createdAt || '—'}</Text>
                   </View>
                 </TouchableOpacity>
               </Animated.View>
@@ -395,19 +438,19 @@ export default function PayrollDashboard() {
                 </TouchableOpacity>
              </View>
              
-             {(current?.earnings || []).map((row, idx) => (
+             {earningsRows.map((row, idx) => (
                <View
                  key={`earn-${idx}`}
                  style={[
                    styles.breakdownRow,
-                   idx === 0 && (current?.earnings?.length || 0) > 0 ? null : null,
+                   idx === 0 && earningsRows.length > 0 ? null : null,
                  ]}
                >
                  <Text style={styles.breakdownLabel}>{row.category}</Text>
                  <Text style={styles.breakdownValue}>{formatINR(row.amount)}</Text>
                </View>
              ))}
-             {(current?.deductions || []).map((row, idx) => (
+             {deductionRows.map((row, idx) => (
                <View
                  key={`ded-${idx}`}
                  style={[styles.breakdownRow, idx === 0 ? styles.deductionBorder : null]}

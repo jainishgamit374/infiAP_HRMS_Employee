@@ -12,6 +12,7 @@ import { LeaveProvider } from '../context/LeaveContext';
 import { NotificationProvider } from '../context/NotificationContext';
 import { SidebarProvider } from '../context/SidebarContext';
 import Sidebar from '../components/layout/Sidebar';
+import NotificationToast from '../components/NotificationToast';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
@@ -54,6 +55,7 @@ export default function RootLayout() {
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
                 </Stack>
+                <NotificationToast />
                 <StatusBar style="auto" />
               </ThemeProvider>
             </SidebarProvider>
