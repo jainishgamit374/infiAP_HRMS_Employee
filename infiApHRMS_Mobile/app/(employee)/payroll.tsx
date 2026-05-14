@@ -7,6 +7,12 @@ import * as Sharing from 'expo-sharing';
 import { BottomNav } from '../../components/BottomNav';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
+import {
+  fetchPayrollCurrent,
+  fetchPayrollHistory,
+  type PayrollCurrentData,
+  type PayrollHistoryItem,
+} from '../../services/auth';
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
@@ -180,49 +186,40 @@ const createPayslipPdf = async (month: string, salary: string, payDate: string) 
 
 
 
-// Generate static history data
-const generateHistoryData = () => {
-  const currentYear = new Date().getFullYear();
-  return [
-    {
-      id: '0',
-      month: `May ${currentYear}`,
-      salary: '₹25,000.00',
-      date: `May 31`,
-      status: 'On Going'
-    },
-    {
-      id: '1',
-      month: `April ${currentYear}`,
-      salary: '₹25,000.00',
-      date: `Apr 30`,
-      status: 'Pending'
-    },
-    {
-      id: '2',
-      month: `March ${currentYear}`,
-      salary: '₹25,000.00',
-      date: `Mar 31`,
-      status: 'Paid'
-    }
-  ];
-};
-
-
+const formatINR = (n: number) =>
+  `₹${(Number.isFinite(n) ? n : 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export default function PayrollDashboard() {
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [current, setCurrent] = useState<PayrollCurrentData | null>(null);
+  const [historyData, setHistoryData] = useState<PayrollHistoryItem[]>([]);
 
-  const [historyData] = useState(() => generateHistoryData());
-  
-  // Get current date/month/year
-  const now = new Date();
-  const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const currentMonth = prevMonthDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-  const currentSalary = '₹25,000';
-  const payDate = `${now.toLocaleString('en-US', { month: 'long' })} 9, ${now.getFullYear()}`;
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const [cur, hist] = await Promise.all([fetchPayrollCurrent(), fetchPayrollHistory()]);
+        if (!isMounted) return;
+        setCurrent(cur.data);
+        setHistoryData(hist.data?.paymentHistory || []);
+      } catch (error) {
+        console.warn('Failed to load payroll:', error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const currentMonth = current?.month || '';
+  const currentSalary = current ? formatINR(current.netSalary) : '—';
+  const payDate = current?.paidAt || (current ? current.month : '');
+  const statusLabel = current?.status || 'PAID';
 
   const handleDownload = async () => {
     if (downloading) return;
@@ -279,15 +276,19 @@ export default function PayrollDashboard() {
         <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.salaryCard}>
           <View style={styles.cardDecoration} />
           <View style={styles.cardHeader}>
-            <Text style={styles.cardLabel}>Salary Month ({currentMonth})</Text>
+            <Text style={styles.cardLabel}>Salary Month ({currentMonth || '—'})</Text>
             <View style={styles.paidBadge}>
-              <Text style={styles.paidText}>PAID</Text>
+              <Text style={styles.paidText}>{statusLabel.toUpperCase()}</Text>
             </View>
           </View>
-          <Text style={styles.salaryAmount}>{currentSalary}</Text>
+          {loading ? (
+            <ActivityIndicator color="#fff" style={{ marginVertical: 16 }} />
+          ) : (
+            <Text style={styles.salaryAmount}>{currentSalary}</Text>
+          )}
           <View style={styles.payDateContainer}>
             <Ionicons name="calendar-outline" size={18} color="#fff" />
-            <Text style={styles.payDateText}>Pay Date: {payDate}</Text>
+            <Text style={styles.payDateText}>Pay Date: {payDate || '—'}</Text>
           </View>
         </Animated.View>
 
@@ -328,39 +329,47 @@ export default function PayrollDashboard() {
         </View>
 
         <View style={styles.historyList}>
-          {historyData.map((item, index) => (
-            <Animated.View 
-              key={item.id}
-              entering={FadeInRight.delay(500 + index * 100).springify()}
-              style={styles.historyCard}
-            >
-              <TouchableOpacity style={styles.historyBtn} activeOpacity={0.7} onPress={() => setDetailsVisible(true)}>
-                <View style={styles.historyLeading}>
-                  <View style={styles.fileIconBox}>
-                    <Ionicons name="document-text-outline" size={24} color="#64748b" />
+          {loading && historyData.length === 0 ? (
+            <ActivityIndicator color="#4f46e5" style={{ marginVertical: 24 }} />
+          ) : historyData.length === 0 ? (
+            <Text style={{ textAlign: 'center', color: '#94a3b8', paddingVertical: 24 }}>
+              No salary history available.
+            </Text>
+          ) : (
+            historyData.map((item, index) => (
+              <Animated.View 
+                key={String(item.id)}
+                entering={FadeInRight.delay(500 + index * 100).springify()}
+                style={styles.historyCard}
+              >
+                <TouchableOpacity style={styles.historyBtn} activeOpacity={0.7} onPress={() => setDetailsVisible(true)}>
+                  <View style={styles.historyLeading}>
+                    <View style={styles.fileIconBox}>
+                      <Ionicons name="document-text-outline" size={24} color="#64748b" />
+                    </View>
+                    <View>
+                      <Text style={styles.historyMonth}>{item.monthYear}</Text>
+                      <Text style={styles.historySub}>NET SALARY: {formatINR(item.net)}</Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={styles.historyMonth}>{item.month}</Text>
-                    <Text style={styles.historySub}>NET SALARY: {item.salary}</Text>
+                  <View style={styles.historyTrailing}>
+                    <View style={[
+                      styles.historyPaidBadge,
+                      item.status === 'Pending' && { backgroundColor: '#fffbeb' },
+                      item.status === 'On Going' && { backgroundColor: '#eff6ff' }
+                    ]}>
+                      <Text style={[
+                        styles.historyPaidText,
+                        item.status === 'Pending' && { color: '#d97706' },
+                        item.status === 'On Going' && { color: '#2563eb' }
+                      ]}>{item.status}</Text>
+                    </View>
+                    <Text style={styles.historyDate}>{item.paidAt}</Text>
                   </View>
-                </View>
-                <View style={styles.historyTrailing}>
-                  <View style={[
-                    styles.historyPaidBadge,
-                    item.status === 'Pending' && { backgroundColor: '#fffbeb' },
-                    item.status === 'On Going' && { backgroundColor: '#eff6ff' }
-                  ]}>
-                    <Text style={[
-                      styles.historyPaidText,
-                      item.status === 'Pending' && { color: '#d97706' },
-                      item.status === 'On Going' && { color: '#2563eb' }
-                    ]}>{item.status}</Text>
-                  </View>
-                  <Text style={styles.historyDate}>{item.date}</Text>
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
-          ))}
+                </TouchableOpacity>
+              </Animated.View>
+            ))
+          )}
         </View>
 
         <View style={{ height: 100 }} />
@@ -386,34 +395,36 @@ export default function PayrollDashboard() {
                 </TouchableOpacity>
              </View>
              
-             <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Basic Salary</Text>
-                <Text style={styles.breakdownValue}>₹25,000.00</Text>
-             </View>
-             <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>HRA (House Rent Allowance)</Text>
-                <Text style={styles.breakdownValue}>₹0.00</Text>
-             </View>
-             <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Conv. Allowance</Text>
-                <Text style={styles.breakdownValue}>₹0.00</Text>
-             </View>
-             <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Special Allowance</Text>
-                <Text style={styles.breakdownValue}>₹0.00</Text>
-             </View>
-             <View style={[styles.breakdownRow, styles.deductionBorder]}>
-                <Text style={styles.deductionLabel}>Professional Tax (PT)</Text>
-                <Text style={styles.deductionValue}>-₹0.00</Text>
-             </View>
-             <View style={styles.breakdownRow}>
-                <Text style={styles.deductionLabel}>Other Deductions</Text>
-                <Text style={styles.deductionValue}>-₹0.00</Text>
-             </View>
-             
+             {(current?.earnings || []).map((row, idx) => (
+               <View
+                 key={`earn-${idx}`}
+                 style={[
+                   styles.breakdownRow,
+                   idx === 0 && (current?.earnings?.length || 0) > 0 ? null : null,
+                 ]}
+               >
+                 <Text style={styles.breakdownLabel}>{row.category}</Text>
+                 <Text style={styles.breakdownValue}>{formatINR(row.amount)}</Text>
+               </View>
+             ))}
+             {(current?.deductions || []).map((row, idx) => (
+               <View
+                 key={`ded-${idx}`}
+                 style={[styles.breakdownRow, idx === 0 ? styles.deductionBorder : null]}
+               >
+                 <Text style={styles.deductionLabel}>{row.category}</Text>
+                 <Text style={styles.deductionValue}>-{formatINR(row.amount)}</Text>
+               </View>
+             ))}
+             {!current && (
+               <Text style={{ textAlign: 'center', color: '#94a3b8', paddingVertical: 16 }}>
+                 No breakdown available.
+               </Text>
+             )}
+
              <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>Net Payable Salary</Text>
-                <Text style={styles.totalValue}>₹25,000.00</Text>
+                <Text style={styles.totalValue}>{currentSalary}</Text>
              </View>
              
              <TouchableOpacity style={styles.closeBtn} onPress={() => setDetailsVisible(false)}>

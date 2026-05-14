@@ -512,6 +512,52 @@ export const fetchAllEmployees = async () => {
   });
 };
 
+export type PayrollCurrentData = {
+  month: string;
+  grossSalary: number;
+  netSalary: number;
+  earnings: { category: string; amount: number }[];
+  deductions: { category: string; amount: number }[];
+  paidAt?: string;
+  status?: string;
+};
+
+export type PayrollHistoryItem = {
+  id: number | string;
+  monthYear: string;
+  gross: number;
+  net: number;
+  status: string;
+  paidAt: string;
+  downloadUrl?: string;
+};
+
+export type PayrollHistoryData = {
+  summary?: {
+    totalYTD: number;
+    ytdGrowth: string;
+    avgNet: number;
+    avgPeriod: string;
+  };
+  paymentHistory: PayrollHistoryItem[];
+};
+
+export const fetchPayrollCurrent = async () => {
+  const headers = await getAuthHeaders();
+  return request<{ status: string; statusCode: number; data: PayrollCurrentData }>(
+    '/payroll/current',
+    { method: 'POST', headers },
+  );
+};
+
+export const fetchPayrollHistory = async () => {
+  const headers = await getAuthHeaders();
+  return request<{ status: string; statusCode: number; data: PayrollHistoryData }>(
+    '/payroll/history',
+    { method: 'POST', headers },
+  );
+};
+
 export const fetchPunchStatus = async () => {
   const headers = await getAuthHeaders();
   return request<{
