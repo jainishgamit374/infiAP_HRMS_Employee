@@ -75,6 +75,7 @@ const mapProfileUser = (user) => ({
     phone: user.phone || "",
     address: user.address || "",
     avatar: user.profileImage || "",
+    doubleShiftAllowed: user.doubleShiftAllowed ?? false,
 });
 
 // 1. Employee Dashboard Home Data
@@ -300,7 +301,20 @@ exports.getPunchStatus = async (req, res) => {
     try {
         const userId = req.user ? req.user._id : "656b23d91f4a9b2b2c3d4e5f";
 
-        const latestPunch = await Punch.findOne({ userId }).sort({ PunchTime: -1 });
+        // Get today's date range
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+
+        // Count today's punches and find latest
+        const todayPunches = await Punch.find({
+            userId,
+            PunchTime: { $gte: todayStart, $lte: todayEnd }
+        }).sort({ PunchTime: 1 });
+
+        const todayPunchCount = todayPunches.length;
+        const latestPunch = todayPunches[todayPunches.length - 1] || null;
 
         let punchType = 3;
         let punchTime = null;
@@ -329,7 +343,8 @@ exports.getPunchStatus = async (req, res) => {
             statusCode: 200,
             data: {
                 PunchType: punchType,
-                PunchDateTime: punchTime || "N/A"
+                PunchDateTime: punchTime || "N/A",
+                todayPunchCount: todayPunchCount
             }
         });
     } catch (error) {

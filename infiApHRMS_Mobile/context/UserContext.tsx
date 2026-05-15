@@ -13,6 +13,7 @@ export interface UserProfile {
   joiningDate: string;
   phone?: string;
   address?: string;
+  doubleShiftAllowed: boolean;
   settings: {
     darkMode: boolean;
     language: string;
@@ -41,6 +42,7 @@ const defaultUser: UserProfile = {
   email: 'sneha.d@infiap.com',
   department: 'Product Design',
   joiningDate: 'Jan 12, 2021',
+  doubleShiftAllowed: false,
   settings: {
     darkMode: false,
     language: 'English (US)',
@@ -82,6 +84,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
       phone: apiUser.phone ?? prev.phone,
       address: apiUser.address ?? prev.address,
       avatar: apiUser.profileImage || apiUser.avatar || prev.avatar,
+      doubleShiftAllowed: apiUser.doubleShiftAllowed ?? prev.doubleShiftAllowed,
     }));
   };
 

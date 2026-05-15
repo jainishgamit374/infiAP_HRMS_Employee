@@ -10,6 +10,7 @@ import Header from '../../components/layout/Header';
 import { useAttendanceSession } from '../../hooks/useAttendanceSession';
 import { useUser } from '@/context/UserContext';
 import { fetchAttendanceSummary, fetchDashboardHome, submitEmployeePunch } from '@/services/auth';
+import { checkMyWFHPermission } from '@/services/wfh';
 import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
 import { useAppTheme } from '@/context/ThemeContext';
 const { width } = Dimensions.get('window');
@@ -42,7 +43,8 @@ const SwipeToCheckIn = () => {
   const MAX_TRANSLATE = SWIPE_WIDTH - KNOB_SIZE - 8;
 
   const translateX = useSharedValue(0);
-  const { session, loading, recordCheckIn, recordCheckOut, resetSession, canCheckOut, isLockedForToday, nextResetLabel } = useAttendanceSession();
+  const { session, loading, recordCheckIn, recordCheckOut, resetSession, toggleDoubleShift, canCheckOut, isLockedForToday, doubleShiftEnabled, nextResetLabel } = useAttendanceSession();
+  const { user } = useUser();
   const [isCapturingLocation, setIsCapturingLocation] = useState(false);
   const [locationError, setLocationError] = useState('');
 
@@ -178,6 +180,44 @@ const SwipeToCheckIn = () => {
           </Text>
         </View>
       </View>
+      {/* Double Shift Toggle */}
+      <View style={styles.doubleShiftRow}>
+        <View style={styles.doubleShiftLabelWrap}>
+          <Ionicons
+            name={doubleShiftEnabled ? "moon" : "moon-outline"}
+            size={16}
+            color={user.doubleShiftAllowed ? (doubleShiftEnabled ? '#4f46e5' : '#64748b') : '#94a3b8'}
+          />
+          <Text style={[styles.doubleShiftLabel, !user.doubleShiftAllowed && styles.doubleShiftLabelDisabled]}>
+            Double Shift
+          </Text>
+          {!user.doubleShiftAllowed && (
+            <Text style={styles.doubleShiftHint}>Contact HR</Text>
+          )}
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.doubleShiftToggle,
+            doubleShiftEnabled && styles.doubleShiftToggleActive,
+            !user.doubleShiftAllowed && styles.doubleShiftToggleDisabled,
+          ]}
+          onPress={() => {
+            if (user.doubleShiftAllowed) {
+              toggleDoubleShift();
+            }
+          }}
+          activeOpacity={user.doubleShiftAllowed ? 0.8 : 1}
+        >
+          <View
+            style={[
+              styles.doubleShiftKnob,
+              doubleShiftEnabled && styles.doubleShiftKnobActive,
+              !user.doubleShiftAllowed && styles.doubleShiftKnobDisabled,
+            ]}
+          />
+        </TouchableOpacity>
+      </View>
+
       {session.checkedIn && !isLockedForToday && (
         <Text style={styles.swipeNote}>{swipeHelpText}</Text>
       )}
@@ -186,7 +226,7 @@ const SwipeToCheckIn = () => {
 };
 
 
-const FeatureCard = ({ icon, title, sub, color, bgColor, route, delay, unreadCount }: { icon: any, title: string, sub: string, color: string, bgColor: string, route: string, delay: number, unreadCount?: number }) => {
+const FeatureCard = ({ icon, title, sub, color, bgColor, route, delay, unreadCount, disabled }: { icon: any, title: string, sub: string, color: string, bgColor: string, route: string, delay: number, unreadCount?: number, disabled?: boolean }) => {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -194,32 +234,38 @@ const FeatureCard = ({ icon, title, sub, color, bgColor, route, delay, unreadCou
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.95, { damping: 10, mass: 1 });
+    if (!disabled) scale.value = withSpring(0.95, { damping: 10, mass: 1 });
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 10, mass: 1 });
+    if (!disabled) scale.value = withSpring(1, { damping: 10, mass: 1 });
   };
 
   return (
     <Animated.View entering={FadeInDown.duration(300).springify()} style={animatedStyle}>
       <TouchableOpacity
-        style={[styles.featureCard, { backgroundColor: bgColor }]}
-        onPress={() => router.push(route as any)}
+        style={[styles.featureCard, { backgroundColor: disabled ? '#f1f5f9' : bgColor }, disabled && styles.featureCardDisabled]}
+        onPress={() => { if (!disabled) router.push(route as any); }}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        activeOpacity={0.9}
+        activeOpacity={disabled ? 1 : 0.9}
+        disabled={disabled}
       >
-        <View style={[styles.featureIconWrap, { backgroundColor: color }]}>
+        <View style={[styles.featureIconWrap, { backgroundColor: disabled ? '#cbd5e1' : color }]}>
           <Ionicons name={icon} size={24} color="#fff" />
           {title === 'Notifications' && unreadCount !== undefined && unreadCount > 0 && (
             <View style={styles.notiBadge}>
               <Text style={styles.notiBadgeText}>{unreadCount}</Text>
             </View>
           )}
+          {disabled && (
+            <View style={styles.lockOverlay}>
+              <Ionicons name="lock-closed" size={12} color="#fff" />
+            </View>
+          )}
         </View>
-        <Text style={styles.featureTitle}>{title}</Text>
-        <Text style={styles.featureSub}>{sub}</Text>
+        <Text style={[styles.featureTitle, disabled && styles.featureTitleDisabled]}>{title}</Text>
+        <Text style={[styles.featureSub, disabled && styles.featureSubDisabled]}>{disabled ? 'Disabled' : sub}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -253,6 +299,7 @@ export default function EmployeeDashboard() {
     list: [] as any[]
   });
   const [isBirthdayModalVisible, setIsBirthdayModalVisible] = useState(false);
+  const [wfhEnabled, setWfhEnabled] = useState(false);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollIndex = useRef(0);
@@ -323,6 +370,18 @@ export default function EmployeeDashboard() {
 
     hydrateDashboard();
   }, [defaultToday, user.name]);
+
+  useEffect(() => {
+    const checkWFH = async () => {
+      try {
+        const response = await checkMyWFHPermission();
+        setWfhEnabled(response?.data?.wfhEnabled ?? false);
+      } catch (error) {
+        setWfhEnabled(false);
+      }
+    };
+    checkWFH();
+  }, []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -443,6 +502,7 @@ export default function EmployeeDashboard() {
                   bgColor="#f5f3ff"
                   route="/(employee)/upcoming-wfh"
                   delay={200}
+                  disabled={!wfhEnabled}
                 />
              
                 <FeatureCard
@@ -832,6 +892,71 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // Double Shift Toggle
+  doubleShiftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  doubleShiftLabelWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  doubleShiftLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  doubleShiftLabelDisabled: {
+    color: '#94a3b8',
+  },
+  doubleShiftHint: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94a3b8',
+    marginLeft: 4,
+  },
+  doubleShiftToggle: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#e2e8f0',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  doubleShiftToggleActive: {
+    backgroundColor: '#4f46e5',
+  },
+  doubleShiftToggleDisabled: {
+    backgroundColor: '#e2e8f0',
+    opacity: 0.6,
+  },
+  doubleShiftKnob: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    transform: [{ translateX: 0 }],
+  },
+  doubleShiftKnobActive: {
+    transform: [{ translateX: 20 }],
+  },
+  doubleShiftKnobDisabled: {
+    backgroundColor: '#f8fafc',
+  },
+
   // Leave Balance Grid
   leaveGrid: {
     flexDirection: 'row',
@@ -1124,6 +1249,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748b',
     textAlign: 'center',
+  },
+  featureCardDisabled: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  featureTitleDisabled: {
+    color: '#94a3b8',
+  },
+  featureSubDisabled: {
+    color: '#cbd5e1',
+  },
+  lockOverlay: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#64748b',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   notiBadge: {
     position: 'absolute',

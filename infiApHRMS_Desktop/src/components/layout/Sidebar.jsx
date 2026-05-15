@@ -32,7 +32,8 @@ import {
   Lock,
   Mail,
   ShieldCheck,
-  Globe
+  Globe,
+  Home
 } from 'lucide-react';
 
 import { useAuth } from '../../context/AuthContext';
@@ -215,6 +216,12 @@ const Sidebar = () => {
       icon: FileText,
       path: '/admin/policies',
       roles: ['Admin']
+    },
+    {
+      name: 'WFH Access',
+      icon: Home,
+      path: role === 'HR' ? '/wfh-permissions' : '/admin/wfh-permissions',
+      roles: ['HR', 'Admin']
     },
     {
       name: 'Performance',

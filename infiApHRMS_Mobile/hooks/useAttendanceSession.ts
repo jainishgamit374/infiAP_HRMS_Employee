@@ -19,6 +19,8 @@ export type AttendanceSession = {
   checkedOut: boolean;
   checkInSnapshot: AttendanceSnapshot | null;
   checkOutSnapshot: AttendanceSnapshot | null;
+  todayPunchCount: number;
+  doubleShiftEnabled: boolean;
 };
 
 const getDateKey = (date = new Date()) => {
@@ -34,6 +36,8 @@ const createEmptySession = (date = new Date()): AttendanceSession => ({
   checkedOut: false,
   checkInSnapshot: null,
   checkOutSnapshot: null,
+  todayPunchCount: 0,
+  doubleShiftEnabled: false,
 });
 
 const normalizeSession = (value: Partial<AttendanceSession> | null | undefined, date = new Date()): AttendanceSession => {
@@ -49,6 +53,8 @@ const normalizeSession = (value: Partial<AttendanceSession> | null | undefined, 
     checkedOut: Boolean(value.checkedOut),
     checkInSnapshot: value.checkInSnapshot ?? null,
     checkOutSnapshot: value.checkOutSnapshot ?? null,
+    todayPunchCount: value.todayPunchCount ?? 0,
+    doubleShiftEnabled: value.doubleShiftEnabled ?? false,
   };
 };
 
@@ -79,7 +85,8 @@ const syncSessionWithBackend = async (date = new Date()) => {
   try {
     const response = await fetchPunchStatus();
     const punchType = response.data.PunchType;
-    
+    const todayPunchCount = response.data.todayPunchCount ?? 0;
+
     // PunchType 3 means no punch/reset, or if no data exists
     if (punchType === 3 || !response.data.PunchDateTime || response.data.PunchDateTime === 'N/A') {
       // Reset local session since backend has no punch data
@@ -87,16 +94,16 @@ const syncSessionWithBackend = async (date = new Date()) => {
       await persistSession(emptySession);
       return emptySession;
     }
-    
+
     // If backend has check-in (PunchType 1) or check-out (PunchType 2), sync local state
     const localSession = await readStoredSession(date);
     const todayKey = getDateKey(date);
-    
+
     if (localSession.dateKey !== todayKey) {
       // Different day, create new session
       return createEmptySession(date);
     }
-    
+
     // Treat backend punch status as the source of truth. Local state can be stale
     // if a previous checkout was shown before the backend record was available.
     if (punchType === 1) {
@@ -104,6 +111,7 @@ const syncSessionWithBackend = async (date = new Date()) => {
         ...localSession,
         checkedIn: true,
         checkedOut: false,
+        todayPunchCount,
         checkInSnapshot: localSession.checkInSnapshot ?? {
           time: response.data.PunchDateTime.split(' ')[1] || '',
         },
@@ -116,6 +124,7 @@ const syncSessionWithBackend = async (date = new Date()) => {
         ...localSession,
         checkedIn: true,
         checkedOut: true,
+        todayPunchCount,
         checkOutSnapshot: localSession.checkOutSnapshot ?? {
           time: response.data.PunchDateTime.split(' ')[1] || '',
         },
@@ -123,7 +132,7 @@ const syncSessionWithBackend = async (date = new Date()) => {
       await persistSession(syncedSession);
       return syncedSession;
     }
-    
+
     return localSession;
   } catch (error) {
     // If sync fails, return local session
@@ -186,7 +195,9 @@ export const useAttendanceSession = () => {
   const recordCheckIn = useCallback(async (snapshot: AttendanceSnapshot) => {
     const currentSession = await loadSession();
 
-    if (currentSession.checkedIn || currentSession.checkedOut) {
+    const isSecondShift = currentSession.checkedOut && currentSession.doubleShiftEnabled && currentSession.todayPunchCount < 4;
+
+    if ((currentSession.checkedIn || currentSession.checkedOut) && !isSecondShift) {
       setSession(currentSession);
       return currentSession;
     }
@@ -197,6 +208,7 @@ export const useAttendanceSession = () => {
       checkedOut: false,
       checkInSnapshot: snapshot,
       checkOutSnapshot: null,
+      todayPunchCount: currentSession.todayPunchCount + 1,
     };
 
     await persistSession(nextSession);
@@ -217,8 +229,21 @@ export const useAttendanceSession = () => {
       checkedIn: true,
       checkedOut: true,
       checkOutSnapshot: snapshot,
+      todayPunchCount: currentSession.todayPunchCount + 1,
     };
 
+    await persistSession(nextSession);
+    setSession(nextSession);
+    return nextSession;
+  }, []);
+
+  const toggleDoubleShift = useCallback(async () => {
+    const currentSession = await loadSession();
+    const nextEnabled = !currentSession.doubleShiftEnabled;
+    const nextSession: AttendanceSession = {
+      ...currentSession,
+      doubleShiftEnabled: nextEnabled,
+    };
     await persistSession(nextSession);
     setSession(nextSession);
     return nextSession;
@@ -231,6 +256,10 @@ export const useAttendanceSession = () => {
     return emptySession;
   }, []);
 
+  const canCheckIn = (!session.checkedIn && !session.checkedOut) || (session.checkedOut && session.doubleShiftEnabled && session.todayPunchCount < 4);
+  const canCheckOut = session.checkedIn && !session.checkedOut;
+  const isLockedForToday = session.checkedOut && (!session.doubleShiftEnabled || session.todayPunchCount >= 4);
+
   return {
     session,
     loading,
@@ -238,9 +267,11 @@ export const useAttendanceSession = () => {
     recordCheckIn,
     recordCheckOut,
     resetSession,
-    canCheckIn: !session.checkedIn && !session.checkedOut,
-    canCheckOut: session.checkedIn && !session.checkedOut,
-    isLockedForToday: session.checkedOut,
+    toggleDoubleShift,
+    canCheckIn,
+    canCheckOut,
+    isLockedForToday,
+    doubleShiftEnabled: session.doubleShiftEnabled,
     nextResetLabel: '12:00 AM',
   };
 };

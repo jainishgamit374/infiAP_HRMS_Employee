@@ -146,6 +146,10 @@ const userSchema = new mongoose.Schema(
                 default: true
             }
         },
+        doubleShiftAllowed: {
+            type: Boolean,
+            default: false
+        },
         expoPushTokens: [{
             type: String,
             trim: true

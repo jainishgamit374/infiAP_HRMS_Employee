@@ -4,13 +4,14 @@ const verifyRole = (roles) => {
         let role = req.user?.role || "";
 
         // Normalize role names for comparison
-        if (role === "main_admin" || role === "Main Admin" || role === "main admin") {
+        const normalized = String(role).toLowerCase().trim();
+        if (normalized === "main_admin" || normalized === "main admin") {
             role = "superadmin";
-        } else if (role === "admin") {
+        } else if (normalized === "admin") {
             role = "admin";
-        } else if (role === "hr") {
+        } else if (normalized === "hr") {
             role = "hr";
-        } else if (role === "employee") {
+        } else if (normalized === "employee") {
             role = "employee";
         }
 

@@ -32,6 +32,7 @@ const sanitizeUser = (user) => ({
     address: user.address || "",
     employeeId: user.employeeId || "",
     profileImage: user.profileImage || "",
+    doubleShiftAllowed: user.doubleShiftAllowed ?? false,
 });
 
 const ROLE_ALIASES = {

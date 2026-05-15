@@ -154,6 +154,7 @@ export const EmployeeProvider = ({ children }) => {
       if (updatedData.salary !== undefined) payload.annualSalary = updatedData.salary;
       if (updatedData.status !== undefined) payload.status = updatedData.status;
       if (updatedData.location !== undefined) payload.address = updatedData.location;
+      if (updatedData.doubleShiftAllowed !== undefined) payload.doubleShiftAllowed = updatedData.doubleShiftAllowed;
       // Handle profile picture upload (File object or URL string)
       if (updatedData.profilePicture !== undefined) {
         payload.profilePicture = updatedData.profilePicture;

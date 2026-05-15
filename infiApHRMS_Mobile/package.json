@@ -10,7 +10,9 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "quality": "npm run lint && npm run typecheck"
+    "quality": "npm run lint && npm run typecheck",
+    "clear-cache": "npx expo start --clear",
+    "reset-metro": "watchman watch-del-all && rm -rf $TMPDIR/metro-* && rm -rf $TMPDIR/haste-map-*"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

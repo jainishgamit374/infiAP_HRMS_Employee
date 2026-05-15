@@ -45,7 +45,8 @@ const EditEmployee = () => {
         manager: '',
         location: '',
         status: '',
-        profilePicture: ''
+        profilePicture: '',
+        doubleShiftAllowed: false
     });
 
     // --- IDENTITY FETCH ---
@@ -60,7 +61,8 @@ const EditEmployee = () => {
                 manager: employee.manager,
                 location: employee.location || 'Mumbai Office',
                 status: employee.status,
-                profilePicture: employee.profileImage || employee.profilePicture || ''
+                profilePicture: employee.profileImage || employee.profilePicture || '',
+                doubleShiftAllowed: employee.doubleShiftAllowed ?? false
             });
             // Set existing profile image preview
             if (employee.profileImage || employee.profilePicture) {
@@ -233,19 +235,49 @@ const EditEmployee = () => {
                                     type="button"
                                     onClick={() => setFormData(prev => ({ ...prev, status }))}
                                     className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${
-                                        formData.status === status 
-                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
+                                        formData.status === status
+                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
                                         : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
                                     }`}
                                 >
                                     <span className="text-sm font-medium">{status}</span>
                                     <div className={`w-2 h-2 rounded-full ${
-                                        status === 'Active' ? 'bg-emerald-500' : 
-                                        status === 'On Leave' ? 'bg-amber-500' : 
+                                        status === 'Active' ? 'bg-emerald-500' :
+                                        status === 'On Leave' ? 'bg-amber-500' :
                                         'bg-red-500'
                                     }`} />
                                 </button>
                             ))}
+                        </div>
+                   </div>
+
+                   <div className="bg-white border border-slate-200 rounded-2xl p-6">
+                        <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <Clock size={16} className="text-indigo-500" />
+                            Shift Permissions
+                        </h3>
+                        <div className="space-y-3">
+                            <button
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, doubleShiftAllowed: !prev.doubleShiftAllowed }))}
+                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${
+                                    formData.doubleShiftAllowed
+                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                                }`}
+                            >
+                                <div className="flex flex-col items-start">
+                                    <span className="text-sm font-medium">Double Shift</span>
+                                    <span className="text-xs text-slate-400 mt-0.5">Allow extra check-in/out</span>
+                                </div>
+                                <div className={`w-10 h-6 rounded-full relative transition-colors ${
+                                    formData.doubleShiftAllowed ? 'bg-indigo-600' : 'bg-slate-200'
+                                }`}>
+                                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                                        formData.doubleShiftAllowed ? 'translate-x-5' : 'translate-x-1'
+                                    }`} />
+                                </div>
+                            </button>
                         </div>
                    </div>
                 </div>

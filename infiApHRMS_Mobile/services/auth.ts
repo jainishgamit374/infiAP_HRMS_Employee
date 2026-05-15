@@ -31,6 +31,7 @@ export type AuthApiUser = {
   address?: string;
   employeeId?: string;
   profileImage?: string;
+  doubleShiftAllowed?: boolean;
 };
 
 export type SignUpResponse = {
@@ -86,6 +87,7 @@ export type EmployeeProfileResponse = {
     phone?: string;
     address?: string;
     avatar?: string;
+    doubleShiftAllowed?: boolean;
   };
   message?: string;
 };
@@ -662,6 +664,7 @@ export const fetchPunchStatus = async () => {
     data: {
       PunchType: number;
       PunchDateTime: string;
+      todayPunchCount: number;
     };
   }>('/punch-status', {
     method: 'GET',

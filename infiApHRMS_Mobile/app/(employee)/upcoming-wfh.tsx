@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Header from '../../components/layout/Header';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { useAppTheme } from '@/context/ThemeContext';
+import { checkMyWFHPermission } from '../../services/wfh';
 const MOCK_WFH: any[] = [];  // Empty initial data - will be fetched from API
 
 const WFHCard = ({ item, index }: { item: any, index: number }) => {
@@ -52,6 +53,10 @@ const WFHCard = ({ item, index }: { item: any, index: number }) => {
 export default function UpcomingWFH() {
   const { colors } = useAppTheme();
   const [wfhList, setWfhList] = useState(MOCK_WFH);
+  const [wfhEnabled, setWfhEnabled] = useState(false);
+  const [permissionLevel, setPermissionLevel] = useState<string | null>(null);
+  const [permissionNotes, setPermissionNotes] = useState<string | null>(null);
+  const [checkingPermission, setCheckingPermission] = useState(true);
 
   const getDayOfWeek = (dateString: string) => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -60,17 +65,33 @@ export default function UpcomingWFH() {
   };
 
   useEffect(() => {
-    // Load WFH data from backend
     const loadWfhData = async () => {
       try {
+        setCheckingPermission(true);
+
+        // Check WFH permission first
+        const permResponse = await checkMyWFHPermission();
+        const enabled = permResponse?.data?.wfhEnabled ?? false;
+        const level = permResponse?.data?.level ?? null;
+        const notes = permResponse?.data?.notes ?? null;
+        setWfhEnabled(enabled);
+        setPermissionLevel(level);
+        setPermissionNotes(notes);
+
+        if (!enabled) {
+          setCheckingPermission(false);
+          return;
+        }
+
+        // Load WFH data from backend
         const api = require('../../constants/api').API_BASE_URL;
-        const response = await fetch(`${api}/getemployeewfh`, {
+        const response = await fetch(`${api}/wfh/upcoming`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
           },
         });
-        
+
         if (response.ok) {
           const json = await response.json();
           if (json && json.data && Array.isArray(json.data)) {
@@ -86,21 +107,68 @@ export default function UpcomingWFH() {
         }
       } catch (error) {
         console.log('Error fetching WFH data:', error);
-        // Keep empty list if API fails
+      } finally {
+        setCheckingPermission(false);
       }
     };
-    
+
     loadWfhData();
   }, []);
+
+  if (checkingPermission) {
+    return (
+      <View style={styles.container}>
+        <Header title="Upcoming WFH" showBack={true} />
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="large" color="#8b5cf6" />
+          <Text style={styles.loadingText}>Checking WFH access...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!wfhEnabled) {
+    return (
+      <View style={styles.container}>
+        <Header title="Upcoming WFH" showBack={true} />
+        <View style={styles.disabledState}>
+          <View style={styles.disabledIconCircle}>
+            <Ionicons name="lock-closed-outline" size={60} color="#cbd5e1" />
+          </View>
+          <Text style={styles.disabledTitle}>WFH Access Disabled</Text>
+          <Text style={styles.disabledSub}>
+            You do not have WFH access. Please contact HR/Admin to request permission.
+          </Text>
+          {permissionLevel && (
+            <View style={styles.permissionTag}>
+              <Text style={styles.permissionTagText}>Access level: {permissionLevel}</Text>
+            </View>
+          )}
+          {permissionNotes && (
+            <View style={styles.notesBanner}>
+              <Ionicons name="information-circle-outline" size={18} color="#8b5cf6" />
+              <Text style={styles.notesBannerText}>{permissionNotes}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Header title="Upcoming WFH" showBack={true} />
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {permissionNotes && (
+          <View style={styles.notesBannerActive}>
+            <Ionicons name="information-circle-outline" size={18} color="#8b5cf6" />
+            <Text style={styles.notesBannerActiveText}>{permissionNotes}</Text>
+          </View>
+        )}
         {wfhList.length > 0 ? (
           wfhList.map((item, index) => (
             <WFHCard key={item.id} item={item} index={index} />
@@ -219,5 +287,106 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 40,
     lineHeight: 20,
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 100,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  disabledState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 100,
+    paddingHorizontal: 32,
+  },
+  disabledIconCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f1f5f9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  disabledTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1e293b',
+    marginBottom: 8,
+  },
+  disabledSub: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  permissionTag: {
+    backgroundColor: '#f3e8ff',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#d8b4fe',
+  },
+  permissionTagText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#7e22ce',
+    textTransform: 'capitalize',
+  },
+  notesBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f5f3ff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    marginTop: 12,
+    width: '100%',
+  },
+  notesBannerText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6d28d9',
+    flex: 1,
+    lineHeight: 18,
+  },
+  notesBannerActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f5f3ff',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    marginBottom: 16,
+    marginHorizontal: 2,
+  },
+  notesBannerActiveText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6d28d9',
+    flex: 1,
+    lineHeight: 18,
   },
 });

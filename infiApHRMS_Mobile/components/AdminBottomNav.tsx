@@ -24,6 +24,12 @@ const NAV_ITEMS = [
     label: 'Resignations',
     route: '/(admin)/resignation-management',
   },
+  {
+    icon: 'home-outline',
+    activeIcon: 'home',
+    label: 'WFH Access',
+    route: '/(admin)/wfh-permissions',
+  },
 ];
 
 const NavItem = ({ item, isActive }: { item: typeof NAV_ITEMS[number]; isActive: boolean }) => {
@@ -92,7 +98,7 @@ const styles = StyleSheet.create({
   floatingNav: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    width: width * 0.75,
+    width: width * 0.9,
     minHeight: 70,
     borderRadius: 35,
     justifyContent: 'space-around',

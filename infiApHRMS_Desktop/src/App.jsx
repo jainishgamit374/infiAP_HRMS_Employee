@@ -77,6 +77,7 @@ import InterviewManagement from './pages/admin-dashboard/recruitment-control/Int
 import CreateJob from './pages/admin-dashboard/recruitment-control/CreateJob';
 import CompanyPolicies from './pages/admin-dashboard/policies/CompanyPolicies';
 import SystemSettings from './pages/admin-dashboard/settings/SystemSettings';
+import WFHPermissions from './pages/admin-dashboard/WFHPermissions';
 
 // Main Admin (Super Admin) Pages
 import MainDashboard from './pages/main-admin/MainDashboard';
@@ -215,6 +216,7 @@ function AppContent() {
 
                       <Route path="/policies" element={<CompanyPolicies />} />
                       <Route path="/settings" element={<SystemSettings />} />
+                      <Route path="/wfh-permissions" element={<WFHPermissions />} />
                     </Routes>
                   </AdminLayout>
                 </ProtectedRoute>
@@ -305,6 +307,7 @@ function AppContent() {
                       <Route path="/resignation/submit" element={<SubmitResignation />} />
                       <Route path="/resignation/requests" element={<ResignationRequests />} />
                       <Route path="/resignation/exit" element={<ExitProcess />} />
+                      <Route path="/wfh-permissions" element={<WFHPermissions />} />
 
                       <Route path="/settings" element={<Placeholder title="Settings" />} />
                     </Routes>
