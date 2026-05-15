@@ -152,6 +152,16 @@ export default function MyResignationPage() {
                   <Text style={styles.detailValue}>{formatDate(item.createdAt)}</Text>
                 </View>
 
+                {item.actionedBy && (item.status === 'Approved' || item.status === 'Rejected') ? (
+                  <View style={styles.detailRow}>
+                    <Ionicons name="person-outline" size={16} color="#94a3b8" />
+                    <Text style={styles.detailLabel}>
+                      {item.status === 'Approved' ? 'Approved by' : 'Rejected by'}
+                    </Text>
+                    <Text style={styles.detailValue}>{item.actionedBy}</Text>
+                  </View>
+                ) : null}
+
                 {item.managerRemarks ? (
                   <View style={[styles.detailRow, { borderBottomWidth: 0 }]}>
                     <Ionicons name="chatbubble-outline" size={16} color="#94a3b8" />

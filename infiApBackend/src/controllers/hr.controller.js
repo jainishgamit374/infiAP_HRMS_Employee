@@ -1706,7 +1706,10 @@ exports.getPayslip = async (req, res) => {
 // ---> HR Operations: Resignation <---
 exports.submitResignation = async (req, res) => {
     try {
-        const { userId, employeeId, reason, noticePeriodDays, lastWorkingDate } = req.body;
+        const {
+            userId, employeeId, employeeName, employeeEmail,
+            department, designation, reason, noticePeriodDays, lastWorkingDate, comments
+        } = req.body;
         const effectiveUserId = userId || employeeId;
 
         if (!effectiveUserId || !reason) {
@@ -1715,9 +1718,15 @@ exports.submitResignation = async (req, res) => {
 
         const reqData = new Resignation({
             userId: effectiveUserId,
+            employeeName,
+            employeeEmail,
+            employeeId,
+            department,
+            designation,
             reason,
             noticePeriodDays: Number.isFinite(Number(noticePeriodDays)) ? Number(noticePeriodDays) : 30,
-            lastWorkingDate: lastWorkingDate || undefined
+            lastWorkingDate: lastWorkingDate || undefined,
+            managerRemarks: comments || undefined
         });
         await reqData.save();
         res.status(201).json({ success: true, message: "Resignation submitted", data: reqData });
@@ -1738,7 +1747,11 @@ exports.getResignations = async (req, res) => {
 exports.processExit = async (req, res) => {
     try {
         const { resignationId, status, managerRemarks } = req.body;
-        const exitData = await Resignation.findByIdAndUpdate(resignationId, { status, managerRemarks }, { new: true });
+        const update = { status, managerRemarks };
+        if (req.user?.name && (status === 'Approved' || status === 'Rejected')) {
+            update.actionedBy = req.user.name;
+        }
+        const exitData = await Resignation.findByIdAndUpdate(resignationId, update, { new: true });
         res.status(200).json({ success: true, message: "Exit Processed", data: exitData });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });

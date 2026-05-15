@@ -19,8 +19,8 @@ const NAV_ITEMS = [
     route: '/(admin)/manage-hr',
   },
   {
-    icon: 'exit-outline',
-    activeIcon: 'exit',
+    icon: 'log-out-outline',
+    activeIcon: 'log-out',
     label: 'Resignations',
     route: '/(admin)/resignation-management',
   },

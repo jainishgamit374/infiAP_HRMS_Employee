@@ -694,6 +694,7 @@ export type ResignationRecord = {
   noticePeriodDays: number;
   lastWorkingDate?: string;
   status: string;
+  actionedBy?: string;
   managerRemarks?: string;
   createdAt?: string;
   updatedAt?: string;
