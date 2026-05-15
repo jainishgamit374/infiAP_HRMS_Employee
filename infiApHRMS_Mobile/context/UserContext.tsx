@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { AuthApiUser, fetchEmployeeProfile, getStoredAuthSession } from '../services/auth';
 
 export interface UserProfile {
+  _id?: string;
   name: string;
   role: string;
   systemRole: 'employee' | 'manager' | 'hr' | 'admin' | 'main_admin';
@@ -60,6 +61,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
     setIsAuthenticated(true);
     setUser((prev) => ({
       ...prev,
+      _id: apiUser._id || prev._id,
       name: apiUser.name || prev.name,
       role: apiUser.designation || apiUser.role || prev.role,
       systemRole: (apiUser.systemRole || apiUser.role || prev.systemRole) as UserProfile['systemRole'],

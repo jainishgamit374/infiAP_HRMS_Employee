@@ -454,7 +454,7 @@ export default function EmployeeDashboard() {
                   route="/(employee)/payroll"
                   delay={300}
                 />
-                <FeatureCard
+                {/* <FeatureCard
                   icon="trending-up-outline"
                   title="Performance"
                   sub="Metrics"
@@ -462,7 +462,7 @@ export default function EmployeeDashboard() {
                   bgColor="#f5f3ff"
                   route="/(employee)/performance"
                   delay={400}
-                />
+                /> */}
                 <FeatureCard
                   icon="notifications-outline"
                   title="Notifications"

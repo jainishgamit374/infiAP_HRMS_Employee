@@ -44,6 +44,8 @@ export default function EmployeeLayout() {
       <Stack.Screen name="edit-leave" />
       <Stack.Screen name="events" />
       <Stack.Screen name="upcoming-wfh" />
+      <Stack.Screen name="apply-resignation" />
+      <Stack.Screen name="my-resignation" />
     </Stack>
   );
 }

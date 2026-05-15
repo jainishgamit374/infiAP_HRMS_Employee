@@ -668,3 +668,63 @@ export const fetchPunchStatus = async () => {
     headers,
   });
 };
+
+export type ResignationPayload = {
+  userId?: string;
+  employeeId?: string;
+  employeeName?: string;
+  employeeEmail?: string;
+  department?: string;
+  designation?: string;
+  reason: string;
+  noticePeriodDays?: number;
+  lastWorkingDate?: string;
+  comments?: string;
+};
+
+export type ResignationRecord = {
+  _id: string;
+  userId?: string;
+  employeeId?: string;
+  employeeName?: string;
+  employeeEmail?: string;
+  department?: string;
+  designation?: string;
+  reason: string;
+  noticePeriodDays: number;
+  lastWorkingDate?: string;
+  status: string;
+  managerRemarks?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export const submitResignation = async (payload: ResignationPayload) => {
+  const headers = await getAuthHeaders();
+  return request<{ success: boolean; message: string; data: ResignationRecord }>('/hr/resignation', {
+    method: 'POST',
+    headers,
+    body: payload,
+  });
+};
+
+export const fetchResignations = async () => {
+  const headers = await getAuthHeaders();
+  return request<{ success: boolean; data: ResignationRecord[] }>('/hr/resignation/register', {
+    method: 'GET',
+    headers,
+  });
+};
+
+export const updateResignationStatus = async (payload: {
+  resignationId: string;
+  status: string;
+  managerRemarks?: string;
+}) => {
+  const headers = await getAuthHeaders();
+  return request<{ success: boolean; message: string; data: ResignationRecord }>('/hr/resignation/exit-process', {
+    method: 'PUT',
+    headers,
+    body: payload,
+  });
+};

@@ -110,7 +110,7 @@ export default function ProfileSettingsPage() {
         {/* App Settings */}
         <View style={styles.section}>
           {renderSectionHeader('settings-outline', 'App Settings')}
-          {renderItem('Dark Mode', undefined, false, true, user.settings.darkMode, (v) => updateSettings({ darkMode: v }))}
+          {/* {renderItem('Dark Mode', undefined, false, true, user.settings.darkMode, (v) => updateSettings({ darkMode: v }))} */}
           {renderItem('Language', user.settings.language, true)}
         </View>
 
@@ -119,6 +119,13 @@ export default function ProfileSettingsPage() {
           {renderSectionHeader('notifications-outline', 'Notifications')}
           {renderItem('Push Notifications', undefined, false, true, user.settings.pushNotifications, (v) => updateSettings({ pushNotifications: v }))}
           {renderItem('Email Reports', undefined, false, true, user.settings.emailReports, (v) => updateSettings({ emailReports: v }))}
+        </View>
+
+        {/* Employment */}
+        <View style={styles.section}>
+          {renderSectionHeader('briefcase-outline', 'Employment')}
+          {renderItem('Apply Resignation', 'Submit resignation request', true, false, false, undefined, undefined, () => router.push('/(employee)/apply-resignation'))}
+          {renderItem('My Resignation Status', 'Track resignation status', true, false, false, undefined, undefined, () => router.push('/(employee)/my-resignation'))}
         </View>
 
         {/* Support & Legal */}

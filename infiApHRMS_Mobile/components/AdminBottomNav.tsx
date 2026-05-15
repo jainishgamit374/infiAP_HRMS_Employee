@@ -18,6 +18,12 @@ const NAV_ITEMS = [
     label: 'Manage HR',
     route: '/(admin)/manage-hr',
   },
+  {
+    icon: 'exit-outline',
+    activeIcon: 'exit',
+    label: 'Resignations',
+    route: '/(admin)/resignation-management',
+  },
 ];
 
 const NavItem = ({ item, isActive }: { item: typeof NAV_ITEMS[number]; isActive: boolean }) => {
@@ -86,10 +92,10 @@ const styles = StyleSheet.create({
   floatingNav: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    width: width * 0.9,
+    width: width * 0.75,
     minHeight: 70,
     borderRadius: 35,
-    justifyContent: 'center',
+    justifyContent: 'space-around',
     alignItems: 'center',
     paddingHorizontal: 10,
     shadowColor: '#000',
