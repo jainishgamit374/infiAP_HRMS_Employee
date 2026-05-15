@@ -117,6 +117,53 @@ const sendBookingConfirmationEmail = async (email, name, date) => {
     }
 };
 
+const sendPasswordResetEmail = async (email, resetToken) => {
+    try {
+        const resetLink = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
+        const emailSent = await sendEmail({
+            to: email,
+            subject: "Password Reset - InfiAP HRMS",
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px;">
+                    <h1 style="color: #1f2937; font-size: 24px; margin-bottom: 16px;">Reset Your Password</h1>
+                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                        We received a request to reset your password for your InfiAP HRMS account.
+                    </p>
+                    <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+                        Click the button below to reset your password. This link will expire in 1 hour.
+                    </p>
+                    <div style="text-align: center; margin: 32px 0;">
+                        <a href="${resetLink}" 
+                           style="display: inline-block; padding: 14px 32px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                            Reset Password
+                        </a>
+                    </div>
+                    <p style="color: #6b7280; font-size: 14px; line-height: 1.5;">
+                        Or copy and paste this link into your browser:
+                    </p>
+                    <p style="color: #4f46e5; font-size: 14px; word-break: break-all;">${resetLink}</p>
+                    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
+                    <p style="color: #9ca3af; font-size: 13px;">
+                        If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
+                    </p>
+                    <p style="color: #9ca3af; font-size: 13px; margin-top: 8px;">
+                        InfiAP Tech Solutions
+                    </p>
+                </div>
+            `,
+        });
+
+        if (emailSent) {
+            logger.info("Password reset email sent", { email });
+        }
+
+        return emailSent;
+    } catch (error) {
+        logger.error("Error sending password reset email", { error: error.message });
+        throw new Error("Could not send password reset email");
+    }
+};
+
 const sendMeetingLinkEmail = async (email, name, date, link) => {
     try {
         await sendEmail({
@@ -142,6 +189,7 @@ const sendMeetingLinkEmail = async (email, name, date, link) => {
 module.exports = {
     sendVerificationEmail,
     sendLoginOTPEmail,
+    sendPasswordResetEmail,
     sendBookingConfirmationEmail,
     sendMeetingLinkEmail,
     isConfiguredForEmail,

@@ -1,7 +1,7 @@
 const User = require("../models/user.model");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { sendVerificationEmail, sendLoginOTPEmail } = require("../services/email.service");
+const { sendVerificationEmail, sendLoginOTPEmail, sendPasswordResetEmail } = require("../services/email.service");
 const logger = require("../utils/logger");
 
 // ===== Token Generation =====
@@ -367,8 +367,8 @@ exports.forgotPassword = async (req, res) => {
         await user.save({ validateBeforeSave: false });
 
         try {
-            // Send the RAW token in the email link (not the hash)
-            await sendLoginOTPEmail(user.email, resetToken);
+            // Send the RAW token in the reset link email (not the hash)
+            await sendPasswordResetEmail(user.email, resetToken);
         } catch (mailError) {
             // If email fails, clear the token
             user.resetPasswordToken = undefined;

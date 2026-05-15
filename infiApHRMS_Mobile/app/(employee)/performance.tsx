@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Platform, StatusBar, Image } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Platform, StatusBar, Image, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
@@ -16,30 +16,11 @@ import Animated, {
   interpolate,
   useDerivedValue,
 } from 'react-native-reanimated';
+import { useUser } from '../../context/UserContext';
+import { resolveImageSource } from '../../utils/image';
+import { fetchEmployeePerformance, fetchPerformanceTrends, PerformanceData, PerformanceTrendItem } from '../../services/performance';
 
 const { width } = Dimensions.get('window');
-
-// Mock Data
-const PERFORMANCE_TREND = [
-  { month: 'MAY', score: 4.2 },
-  { month: 'JUN', score: 4.4 },
-  { month: 'JUL', score: 4.3 },
-  { month: 'AUG', score: 4.6 },
-  { month: 'SEP', score: 4.5 },
-  { month: 'OCT', score: 4.8, active: true },
-];
-
-const KPIS = [
-  { label: 'Efficiency', value: 0.92, color: '#4f46e5' },
-  { label: 'Quality', value: 0.95, color: '#10b981' },
-  { label: 'Timeliness', value: 0.88, color: '#f59e0b' },
-];
-
-const GOALS = [
-  { id: '1', title: 'Q4 Core Engine Refactor', progress: 0.75, status: 'In Progress', deadline: 'Dec 15, 2023' },
-  { id: '2', title: 'API Documentation', progress: 1.0, status: 'Completed', deadline: 'Oct 30, 2023' },
-  { id: '3', title: 'Unit Test Coverage > 90%', progress: 0.4, status: 'In Progress', deadline: 'Nov 20, 2023' },
-];
 
 // Components
 const CountUpScore = ({ target }: { target: number }) => {
@@ -116,28 +97,109 @@ const PerformanceBar = ({ item, index }: any) => {
 };
 
 export default function PerformanceDashboard() {
+  const { user } = useUser();
+  const [performance, setPerformance] = useState<PerformanceData | null>(null);
+  const [trends, setTrends] = useState<PerformanceTrendItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      const [perfRes, trendRes] = await Promise.all([
+        fetchEmployeePerformance(),
+        fetchPerformanceTrends().catch(() => ({ success: true, data: [] })),
+      ]);
+      setPerformance(perfRes.data);
+      setTrends(trendRes.data || []);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to load performance data');
+      console.warn('[Performance] Load error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Build trend bars from API data; fallback to mock if empty
+  const trendData: { month: string; score: number; active?: boolean }[] = React.useMemo(() => {
+    if (trends.length > 0) {
+      return trends.map((t, i) => ({
+        month: t.month.slice(0, 3).toUpperCase(),
+        score: Math.min(Math.max(parseFloat(t.avgScore as any) / 20, 0), 5),
+        active: i === trends.length - 1,
+      }));
+    }
+    return [
+      { month: 'MAY', score: 4.2 },
+      { month: 'JUN', score: 4.4 },
+      { month: 'JUL', score: 4.3 },
+      { month: 'AUG', score: 4.6 },
+      { month: 'SEP', score: 4.5 },
+      { month: 'OCT', score: 4.8, active: true },
+    ];
+  }, [trends]);
+
+  // Build KPIs from real data
+  const kpis = React.useMemo(() => {
+    if (!performance) return [];
+    return [
+      { label: 'Efficiency', value: (performance.coreMetrics.efficiency || 0) / 100, color: '#4f46e5' },
+      { label: 'Quality', value: (performance.coreMetrics.quality || 0) / 100, color: '#10b981' },
+      { label: 'Reliability', value: (performance.coreMetrics.reliability || 0) / 100, color: '#f59e0b' },
+    ];
+  }, [performance]);
+
+  // Compute stars from monthlyScore (0-100 mapped to 1-5)
+  const starCount = React.useMemo(() => {
+    if (!performance) return 5;
+    return Math.min(5, Math.max(1, Math.round((performance.monthlyScore || 0) / 20)));
+  }, [performance]);
+
+  const avatarSource = resolveImageSource(user.avatar);
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
       <Header title="Performance" showBack={true} />
 
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#4f46e5" />
+          <Text style={styles.loadingText}>Loading performance data...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
         {/* Profile Section */}
         <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.profileCard}>
            <View style={styles.profileHeader}>
               <View style={styles.avatarContainer}>
-                <View style={styles.avatarPlaceholder}>
-                   <Ionicons name="person" size={40} color="#fff" />
-                </View>
+                <Image 
+                  source={avatarSource} 
+                  style={styles.avatarImage} 
+                  resizeMode="cover"
+                />
                 <View style={styles.statusDot} />
               </View>
               <View style={styles.profileInfo}>
-                 <Text style={styles.empName}>Jainish Gamit</Text>
-                 <Text style={styles.empRole}>Senior Software Engineer</Text>
+                 <Text style={styles.empName}>{user.name || 'Employee'}</Text>
+                 <Text style={styles.empRole}>{user.role || 'Employee'}</Text>
                  <View style={styles.teamTag}>
-                    <Text style={styles.teamText}>Product Engineering • ID: EP102</Text>
+                    <Text style={styles.teamText}>{user.department || 'General'} • ID: {user.employeeId || 'N/A'}</Text>
                  </View>
               </View>
            </View>
@@ -147,10 +209,10 @@ export default function PerformanceDashboard() {
         <View style={styles.row}>
            <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.scoreCard}>
               <Text style={styles.cardLabel}>Monthly Score</Text>
-              <CountUpScore target={4.8} />
+              <CountUpScore target={performance ? performance.monthlyScore / 20 : 0} />
               <View style={styles.improvementRow}>
                  <Ionicons name="trending-up" size={16} color="#10b981" />
-                 <Text style={styles.improvementText}>+4.2% from last month</Text>
+                 <Text style={styles.improvementText}>{performance?.month || 'Current Month'}</Text>
               </View>
            </Animated.View>
 
@@ -159,13 +221,15 @@ export default function PerformanceDashboard() {
                 activeOpacity={0.7} 
                 onPress={() => router.push('/(employee)/performance-history')}
               >
-                <Text style={styles.cardLabel}>Project Rating</Text>
+                <Text style={[styles.cardLabel, styles.statsCard_label]}>Project Rating</Text>
                 <View style={styles.rowBetween}>
-                  <Text style={styles.statValue}>Excellent</Text>
+                  <Text style={styles.statValue}>{performance ? (performance.monthlyScore >= 85 ? 'Excellent' : performance.monthlyScore >= 70 ? 'Good' : 'Average') : 'N/A'}</Text>
                   <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
                 </View>
                 <View style={styles.starsRow}>
-                  {[1,2,3,4,5].map(s => <Ionicons key={s} name="star" size={14} color="#f59e0b" />)}
+                  {[1,2,3,4,5].map(s => (
+                    <Ionicons key={s} name={s <= starCount ? "star" : "star-outline"} size={14} color="#f59e0b" />
+                  ))}
                 </View>
               </TouchableOpacity>
            </Animated.View>
@@ -175,7 +239,7 @@ export default function PerformanceDashboard() {
         <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.sectionCard}>
            <Text style={styles.sectionTitle}>Performance Trend</Text>
            <View style={styles.chartArea}>
-              {PERFORMANCE_TREND.map((item, index) => (
+              {trendData.map((item, index) => (
                 <PerformanceBar key={item.month} item={item} index={index} />
               ))}
            </View>
@@ -183,7 +247,7 @@ export default function PerformanceDashboard() {
 
         {/* KPIs Row */}
         <View style={styles.kpiRow}>
-           {KPIS.map((kpi, index) => (
+           {kpis.map((kpi, index) => (
              <Animated.View key={kpi.label} entering={FadeInDown.delay(500 + index * 100).springify()}>
                 <CircularProgress {...kpi} />
              </Animated.View>
@@ -199,9 +263,9 @@ export default function PerformanceDashboard() {
         </View>
 
         <View style={styles.goalsList}>
-           {GOALS.map((goal, index) => (
+           {(performance?.goalsTracking || []).map((goal, index) => (
              <Animated.View 
-               key={goal.id} 
+               key={String(goal.id)} 
                entering={FadeInRight.delay(700 + index * 100).springify()}
                style={styles.goalCard}
              >
@@ -215,43 +279,39 @@ export default function PerformanceDashboard() {
                    <View style={styles.progressBarBg}>
                       <Animated.View 
                          entering={FadeInRight.delay(1000 + index * 100).duration(1000)}
-                         style={[styles.progressBarFill, { width: `${goal.progress * 100}%`, backgroundColor: goal.status === 'Completed' ? '#10b981' : '#4f46e5' }]} 
+                         style={[styles.progressBarFill, { width: `${Math.min(goal.progress, 100)}%`, backgroundColor: goal.status === 'Completed' ? '#10b981' : '#4f46e5' }]} 
                       />
                    </View>
-                   <Text style={styles.progressText}>{Math.round(goal.progress * 100)}%</Text>
-                </View>
-                <View style={styles.deadlineRow}>
-                   <Ionicons name="time-outline" size={12} color="#94a3b8" />
-                   <Text style={styles.deadlineText}>Deadline: {goal.deadline}</Text>
+                   <Text style={styles.progressText}>{Math.round(goal.progress)}%</Text>
                 </View>
              </Animated.View>
            ))}
         </View>
 
         {/* Achievements */}
-        <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Achievements</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeScroll}>
-           {[
-             { title: 'Top Performer', icon: 'trophy', color: '#f59e0b' },
-             { title: 'Fast Learner', icon: 'flash', color: '#6366f1' },
-             { title: 'Team Player', icon: 'people', color: '#10b981' },
-             { title: 'Innovator', icon: 'bulb', color: '#ec4899' },
-           ].map((b, i) => (
-             <Animated.View 
-               key={b.title} 
-               entering={FadeInRight.delay(1200 + i * 100).springify()}
-               style={styles.badgeCard}
-             >
-                <View style={[styles.badgeIconBox, { backgroundColor: `${b.color}15` }]}>
-                   <Ionicons name={b.icon as any} size={24} color={b.color} />
-                </View>
-                <Text style={styles.badgeTitle}>{b.title}</Text>
-             </Animated.View>
-           ))}
-        </ScrollView>
+        {performance && (performance.achievements || []).length > 0 && (
+          <>
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Achievements</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.badgeScroll}>
+               {(performance.achievements || []).map((ach, i) => (
+                 <Animated.View 
+                   key={ach.title + i} 
+                   entering={FadeInRight.delay(1200 + i * 100).springify()}
+                   style={styles.badgeCard}
+                 >
+                    <View style={[styles.badgeIconBox, { backgroundColor: '#f59e0b15' }]}>
+                       <Ionicons name="trophy" size={24} color="#f59e0b" />
+                    </View>
+                    <Text style={styles.badgeTitle}>{ach.title}</Text>
+                 </Animated.View>
+               ))}
+            </ScrollView>
+          </>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
+      )}
       <BottomNav />
     </View>
   );
@@ -261,6 +321,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  errorText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#ef4444',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: '#4f46e5',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  retryText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   scrollContent: {
     padding: 20,
@@ -286,13 +377,11 @@ const styles = StyleSheet.create({
   avatarContainer: {
     position: 'relative',
   },
-  avatarPlaceholder: {
+  avatarImage: {
     width: 70,
     height: 70,
     borderRadius: 35,
     backgroundColor: '#4f46e5',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   statusDot: {
     position: 'absolute',

@@ -13,31 +13,41 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
-import { Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { forgotPassword } from '../../services/auth';
+import { resetPassword } from '../../services/auth';
 
-export default function ForgotPassword() {
-  const [email, setEmail] = useState('');
+export default function ResetPasswordScreen() {
+  const [token, setToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const handleSendResetLink = async () => {
-    if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email address');
+  const handleResetPassword = async () => {
+    if (!token.trim()) {
+      Alert.alert('Error', 'Please enter your reset token');
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      Alert.alert('Error', 'Please enter a valid email address');
+    if (!newPassword.trim()) {
+      Alert.alert('Error', 'Please enter a new password');
       return;
     }
+    if (newPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+
     try {
       setLoading(true);
-      await forgotPassword(email.trim());
-      setSent(true);
+      await resetPassword(token.trim(), newPassword);
+      setSuccess(true);
     } catch (error: any) {
-      Alert.alert('Error', error?.message || 'Failed to send reset link. Please try again.');
+      Alert.alert('Error', error?.message || 'Failed to reset password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -53,51 +63,98 @@ export default function ForgotPassword() {
         <ScrollView contentContainerStyle={styles.container}>
           <View style={{ marginTop: 4 }} />
 
-          {/* Card */}
           <View style={styles.card}>
             <Text style={styles.title}>Reset your password</Text>
             <Text style={styles.subtitle}>
-              Enter the email address associated with your account and we’ll send you a link to reset your password.
+              Enter the reset token from your email and set a new password.
             </Text>
 
-            {/* Email */}
+            {/* Reset Token */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>EMAIL ADDRESS</Text>
+              <Text style={styles.label}>RESET TOKEN</Text>
               <View style={styles.inputContainer}>
-                <Ionicons name="at-outline" size={20} color="#9ca3af" style={styles.inputIcon} />
+                <Ionicons name="key-outline" size={20} color="#9ca3af" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="name@company.com"
+                  placeholder="Paste your reset token here"
                   placeholderTextColor="#9ca3af"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
+                  value={token}
+                  onChangeText={setToken}
                   autoCapitalize="none"
                 />
               </View>
             </View>
 
-            {sent ? (
+            {/* New Password */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>NEW PASSWORD</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color="#9ca3af" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter new password"
+                  placeholderTextColor="#9ca3af"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons
+                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                    size={20}
+                    color="#9ca3af"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Confirm Password */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>CONFIRM PASSWORD</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color="#9ca3af" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Confirm new password"
+                  placeholderTextColor="#9ca3af"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+
+            {success ? (
               <View style={[styles.button, { backgroundColor: '#10b981' }]}>
                 <Ionicons name="checkmark-circle" size={20} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.buttonText}>Reset link sent!</Text>
+                <Text style={styles.buttonText}>Password reset!</Text>
               </View>
             ) : (
               <TouchableOpacity
                 style={[styles.button, loading && { opacity: 0.7 }]}
                 activeOpacity={0.8}
-                onPress={handleSendResetLink}
+                onPress={handleResetPassword}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <>
-                    <Text style={styles.buttonText}>Send Reset Link</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 6 }} />
-                  </>
+                  <Text style={styles.buttonText}>Reset Password</Text>
                 )}
               </TouchableOpacity>
+            )}
+
+            {success && (
+              <View style={styles.successBox}>
+                <Text style={styles.successText}>
+                  Your password has been reset successfully.
+                </Text>
+                <TouchableOpacity onPress={() => router.push('/(auth)/sign-in')}>
+                  <Text style={styles.enterTokenLink}>Go to Sign In</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* Back to Sign In */}
@@ -109,23 +166,6 @@ export default function ForgotPassword() {
                 </TouchableOpacity>
               </Link>
             </View>
-            {sent && (
-              <View style={styles.successBox}>
-                <Text style={styles.successText}>
-                  If this email exists in our system, a reset link has been sent. Check your inbox (and spam folder).
-                </Text>
-                <TouchableOpacity onPress={() => router.push('/(auth)/reset-password')}>
-                  <Text style={styles.enterTokenLink}>Already have a reset token? Enter it here</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footerContainer}>
-            <Text style={styles.footerText}>
-              Having trouble? <Text style={styles.footerLink}>Contact support</Text>
-            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -167,7 +207,7 @@ const styles = StyleSheet.create({
     marginBottom: 28,
   },
   inputGroup: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   label: {
     fontSize: 12,
@@ -207,7 +247,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 4,
-    marginBottom: 40,
+    marginBottom: 20,
   },
   buttonText: {
     color: '#ffffff',
@@ -227,19 +267,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  footerContainer: {
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  footerText: {
-    fontSize: 14,
-    color: '#9ca3af',
-    marginBottom: 16,
-  },
-  footerLink: {
-    color: '#007AFF',
-    fontWeight: '500',
-  },
   successBox: {
     marginTop: 16,
     backgroundColor: '#ecfdf5',
@@ -247,6 +274,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: '#a7f3d0',
+    marginBottom: 16,
   },
   successText: {
     fontSize: 13,

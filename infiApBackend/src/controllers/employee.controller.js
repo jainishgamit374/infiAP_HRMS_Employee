@@ -1608,29 +1608,64 @@ exports.getPayrollDetails = async (req, res) => {
     }
 };
 
+const Performance = require("../models/performance.model");
+
 // 45. Get Employee Performance (POST for GET)
 exports.getEmployeePerformance = async (req, res) => {
     try {
-        const performanceData = {
-            monthlyScore: 88,
-            month: "March 2026",
-            coreMetrics: {
-                efficiency: 90,
-                quality: 85,
-                reliability: 92 // Substituted second 'quality' with 'reliability' for a comprehensive core
-            },
-            goalsTracking: [
-                { id: 1, title: "Complete Q1 Project Deliverables", progress: 100, status: "Completed" },
-                { id: 2, title: "Improve Code Review Time", progress: 75, status: "In Progress" },
-                { id: 3, title: "Learn New Framework", progress: 40, status: "In Progress" }
-            ],
-            feedback: [
-                { date: "15-Mar-2026", type: "Positive", message: "Great UI design implementations this sprint.", from: "Manager" }
-            ],
-            achievements: [
-                { date: "10-Mar-2026", title: "Employee of the Week", description: "Recognized for outstanding support." }
-            ]
-        };
+        const userId = req.user && req.user._id;
+        if (!userId) {
+            return res.status(401).json({ status: "Error", message: "Unauthorized" });
+        }
+
+        // Find the most recent performance record for this user
+        const performance = await Performance.findOne({ userId })
+            .sort({ year: -1, month: -1 })
+            .lean();
+
+        let performanceData;
+
+        if (performance) {
+            const overallScore = performance.overallScore || 0;
+            performanceData = {
+                monthlyScore: Math.round(overallScore),
+                month: performance.month || new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+                coreMetrics: {
+                    efficiency: performance.efficiencyScore || 0,
+                    quality: performance.qualityScore || 0,
+                    reliability: performance.reliabilityScore || 0,
+                },
+                goalsTracking: [
+                    { id: 1, title: "Complete Project Deliverables", progress: Math.min(performance.targetPercentage || 0, 100), status: (performance.targetPercentage || 0) >= 100 ? "Completed" : "In Progress" },
+                    { id: 2, title: "Improve Work Quality", progress: Math.min(Math.round((performance.qualityScore || 0)), 100), status: (performance.qualityScore || 0) >= 85 ? "Completed" : "In Progress" },
+                    { id: 3, title: "Meet Efficiency Targets", progress: Math.min(Math.round((performance.efficiencyScore || 0)), 100), status: (performance.efficiencyScore || 0) >= 85 ? "Completed" : "In Progress" }
+                ],
+                feedback: [
+                    { date: new Date(performance.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'), type: "Positive", message: performance.feedback || "Great performance this month.", from: performance.reviewerName || "Manager" }
+                ],
+                achievements: [
+                    { date: new Date(performance.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-'), title: performance.status === "Exceeding" ? "Top Performer" : "On Target", description: `Performance status: ${performance.status || "On Target"}.` }
+                ]
+            };
+        } else {
+            // Fallback to sensible defaults if no performance record exists
+            performanceData = {
+                monthlyScore: 0,
+                month: new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+                coreMetrics: {
+                    efficiency: 0,
+                    quality: 0,
+                    reliability: 0,
+                },
+                goalsTracking: [
+                    { id: 1, title: "Complete Project Deliverables", progress: 0, status: "In Progress" },
+                    { id: 2, title: "Improve Work Quality", progress: 0, status: "In Progress" },
+                    { id: 3, title: "Meet Efficiency Targets", progress: 0, status: "In Progress" }
+                ],
+                feedback: [],
+                achievements: []
+            };
+        }
 
         res.status(200).json({ status: "Success", statusCode: 200, data: performanceData });
     } catch (error) {

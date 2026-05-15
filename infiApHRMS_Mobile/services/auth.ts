@@ -260,7 +260,7 @@ export const signOutUser = async () => {
   await Promise.all([clearStoredAuthSession(), clearPendingTwoFactorChallenge()]);
 };
 
-const getAuthHeaders = async (): Promise<Record<string, string>> => {
+export const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const session = await getStoredAuthSession();
   if (!session?.token) {
     throw new ApiError('You are not signed in.');
@@ -618,6 +618,40 @@ export const fetchPayrollHistory = async () => {
     '/payroll/history',
     { method: 'POST', headers },
   );
+};
+
+export const forgotPassword = async (email: string) => {
+  const response = await fetch(buildUrl('/auth/forgot-password'), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email }),
+  });
+  const rawText = await response.text();
+  const data = rawText ? JSON.parse(rawText) : {};
+  if (!response.ok) {
+    throw new Error(data.message || data.error || 'Failed to send reset link');
+  }
+  return data as { message: string };
+};
+
+export const resetPassword = async (resetToken: string, newPassword: string) => {
+  const response = await fetch(buildUrl('/auth/reset-password'), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ resetToken, newPassword }),
+  });
+  const rawText = await response.text();
+  const data = rawText ? JSON.parse(rawText) : {};
+  if (!response.ok) {
+    throw new Error(data.message || data.error || 'Failed to reset password');
+  }
+  return data as { message: string };
 };
 
 export const fetchPunchStatus = async () => {

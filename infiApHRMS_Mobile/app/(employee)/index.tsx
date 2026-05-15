@@ -442,15 +442,7 @@ export default function EmployeeDashboard() {
                   route="/(employee)/upcoming-wfh"
                   delay={200}
                 />
-                {/* <FeatureCard
-                  icon="megaphone-outline"
-                  title="Events"
-                  sub="Explore"
-                  color="#f97316"
-                  bgColor="#fff7ed"
-                  route="/(employee)/events"
-                  delay={300}
-                /> */}
+             
                 <FeatureCard
                   icon="cash-outline"
                   title="Payroll"

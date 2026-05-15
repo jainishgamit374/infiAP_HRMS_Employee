@@ -13,6 +13,7 @@ import {
   configureNotificationHandler,
   setupAndroidNotificationChannel,
 } from '../services/notifications';
+import { useUser } from './UserContext';
 
 export type NotificationType = 'leave' | 'attendance' | 'payroll' | 'performance' | 'system';
 
@@ -114,8 +115,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [toast, setToast] = useState<Notification | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const isFirstLoadRef = useRef(true);
+  const { isAuthenticated } = useUser();
 
   const refreshNotifications = useCallback(async () => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
     try {
       setError(null);
       const response = await fetchMyNotifications();
@@ -146,18 +152,23 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
     refreshNotifications();
     const id = setInterval(() => {
       refreshNotifications();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [refreshNotifications]);
+  }, [refreshNotifications, isAuthenticated]);
 
   // Push notification setup
   useEffect(() => {
+    if (!isAuthenticated) return;
     let cleanup = () => {};
 
     const setupPush = async () => {
