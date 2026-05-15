@@ -38,7 +38,7 @@ export default function LeaveManagement() {
     },
     {
       id: 'approvals',
-      title: 'Leave Approvals / Rejections',
+      title: 'Leaves Tracking',
       subtitle: 'Approve/reject leaves',
       icon: 'checkmark-circle-outline',
       color: '#4f39f6',
