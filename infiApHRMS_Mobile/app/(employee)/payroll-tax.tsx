@@ -7,6 +7,7 @@ import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const { width } = Dimensions.get('window');
 
 const TAX_BREAKDOWN = [
@@ -19,6 +20,7 @@ const TAX_BREAKDOWN = [
 ];
 
 export default function PayrollTax() {
+  const { colors } = useAppTheme();
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />

@@ -7,6 +7,7 @@ import { useUser } from '../../context/UserContext';
 import Header from '../../components/layout/Header';
 import { resolveImageSource } from '@/utils/image';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const activityFeed = [
   { title: 'Address details updated', date: 'Oct 12, 2023 • 11:45 AM', completed: true },
   { title: 'Emergency contact added', date: 'Sep 05, 2023 • 09:20 AM', completed: false },
@@ -36,6 +37,7 @@ const InfoRow = ({
 );
 
 export default function PersonalProfilePage() {
+  const { colors } = useAppTheme();
   const { user } = useUser();
 
   return (

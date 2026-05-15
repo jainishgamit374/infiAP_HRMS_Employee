@@ -24,6 +24,7 @@ import {
 } from '../../../services/requestRooms';
 import Header from '../../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const StatusConfig: Record<string, { bg: string; text: string; label: string; icon: any }> = {
   pending: { bg: '#fef9c3', text: '#ca8a04', label: 'Pending', icon: 'time-outline' },
   approved: { bg: '#dcfce7', text: '#16a34a', label: 'Approved', icon: 'checkmark-circle-outline' },
@@ -36,6 +37,7 @@ const getSenderName = (sender: RequestRoomMessage['sender']) => {
 };
 
 export default function RequestRoomDetailPage() {
+  const { colors } = useAppTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useUser();
   const [room, setRoom] = useState<RequestRoom | null>(null);

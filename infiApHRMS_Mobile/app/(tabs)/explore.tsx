@@ -9,7 +9,9 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function TabTwoScreen() {
+  const { colors } = useAppTheme();
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}

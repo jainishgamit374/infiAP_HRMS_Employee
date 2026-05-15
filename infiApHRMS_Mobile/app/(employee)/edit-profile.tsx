@@ -21,7 +21,9 @@ import { resolveImageSource } from '@/utils/image';
 import { updateEmployeeProfile } from '@/services/auth';
 import { UI } from '@/constants/ui';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function EditProfilePage() {
+  const { colors } = useAppTheme();
   const { user, syncUserFromApi } = useUser();
   const [name, setName] = useState(user.name);
   const [designation, setDesignation] = useState(user.role);

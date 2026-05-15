@@ -8,6 +8,7 @@ import { fetchAllEmployees, DirectoryEmployee } from '../../services/auth';
 import Header from '../../components/layout/Header';
 import { API_BASE_URL } from '../../constants/api';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const TEAMS = ['All Teams', 'Engineering', 'Design', 'Marketing', 'Product', 'HR'];
 
 // These fields are missing from the API but used in the UI
@@ -20,11 +21,8 @@ type UIEmployee = {
   image: any; // string URL or required asset
   status: string;
   bio: string;
-  rating: string;
   email: string;
   phone: string;
-  earned: string;
-  rate: string;
 };
 
 const getTeamColor = (team: string) => {
@@ -48,6 +46,7 @@ const getImageUrl = (profile: string) => {
 };
 
 export default function DirectoryPage() {
+  const { colors } = useAppTheme();
   const [activeTeam, setActiveTeam] = useState('All Teams');
   const [searchQuery, setSearchQuery] = useState('');
   const [employees, setEmployees] = useState<UIEmployee[]>([]);
@@ -69,11 +68,8 @@ export default function DirectoryPage() {
           image: emp.profile ? { uri: getImageUrl(emp.profile) } : require('../../assets/images/sarah.png'),
           status: 'active',
           bio: 'Building the future of InfiAP with expertise and passion.',
-          rating: (4 + Math.random()).toFixed(1), // Mock rating
           email: emp.contact?.email || 'N/A',
           phone: emp.contact?.phone || 'N/A',
-          earned: '₹' + (20 + Math.floor(Math.random() * 20)) + 'k+',
-          rate: '₹' + (100 + Math.floor(Math.random() * 100)) + '/hr',
         }));
         setEmployees(mapped);
       }
@@ -129,7 +125,7 @@ export default function DirectoryPage() {
       >
         {/* Search */}
         <View style={styles.searchContainer}>
-          <Ionicons name="search-outline" size={20} color="#94a3b8" style={styles.searchIcon} />
+          <Ionicons name="search-outline" size={20} color={colors.textMuted} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search by name or role..."
@@ -204,7 +200,7 @@ export default function DirectoryPage() {
                     style={styles.slackBtn}
                     onPress={() => Linking.openURL(`tel:${employee.phone}`)}
                   >
-                    <Ionicons name="call" size={14} color="#1e293b" />
+                    <Ionicons name="call" size={14} color={colors.text} />
                     <Text style={styles.slackBtnText}>Call</Text>
                   </TouchableOpacity>
                 </View>
@@ -257,33 +253,13 @@ export default function DirectoryPage() {
                     <Text style={styles.modalBio}>{selectedEmployee.bio}</Text>
                   </View>
 
-                  <View style={styles.statsRow}>
-                    <View style={styles.statItem}>
-                      <View style={styles.statTopRow}>
-                        <Ionicons name="star" size={15} color="#fbbf24" />
-                        <Text style={styles.statValue}>{selectedEmployee.rating}</Text>
-                      </View>
-                      <Text style={styles.statLabel}>Rating</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{selectedEmployee.earned}</Text>
-                      <Text style={styles.statLabel}>Earned</Text>
-                    </View>
-                    <View style={styles.statDivider} />
-                    <View style={styles.statItem}>
-                      <Text style={styles.statValue}>{selectedEmployee.rate}</Text>
-                      <Text style={styles.statLabel}>Rate</Text>
-                    </View>
-                  </View>
-
                   <View style={styles.modalActions}>
                     <TouchableOpacity 
                       style={styles.primaryAction} 
                       activeOpacity={0.9}
                       onPress={() => Linking.openURL(`mailto:${selectedEmployee.email}`)}
                     >
-                      <Ionicons name="mail-outline" size={20} color="#111827" />
+                      <Ionicons name="mail-outline" size={20} color={colors.text} />
                       <Text style={styles.primaryActionText}>Get In Touch</Text>
                     </TouchableOpacity>
                     <TouchableOpacity 

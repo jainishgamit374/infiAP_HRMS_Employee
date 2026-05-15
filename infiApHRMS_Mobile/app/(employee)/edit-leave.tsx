@@ -12,7 +12,9 @@ import { useLeave } from '../../context/LeaveContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function EditLeave() {
+  const { colors } = useAppTheme();
   const { id } = useLocalSearchParams();
   const { leaves, updateLeave, balances } = useLeave();
   
@@ -149,7 +151,7 @@ export default function EditLeave() {
               <Text style={leaveType ? styles.inputText : styles.placeholderText}>
                 {leaveType || 'Select leave category'}
               </Text>
-              <Ionicons name="chevron-down" size={20} color="#64748b" />
+              <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
             </TouchableOpacity>
 
             <View style={styles.row}>
@@ -166,7 +168,7 @@ export default function EditLeave() {
                   <Text style={startDate ? styles.inputText : styles.placeholderText}>
                     {startDate || 'YYYY-MM-DD'}
                   </Text>
-                  <Ionicons name="calendar-outline" size={18} color="#64748b" style={styles.inputIcon} />
+                  <Ionicons name="calendar-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
                 </TouchableOpacity>
               </View>
               <View style={styles.halfWidth}>
@@ -182,7 +184,7 @@ export default function EditLeave() {
                   <Text style={endDate ? styles.inputText : styles.placeholderText}>
                     {endDate || 'YYYY-MM-DD'}
                   </Text>
-                  <Ionicons name="calendar-outline" size={18} color="#64748b" style={styles.inputIcon} />
+                  <Ionicons name="calendar-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
                 </TouchableOpacity>
               </View>
             </View>

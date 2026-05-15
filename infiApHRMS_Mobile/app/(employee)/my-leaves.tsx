@@ -17,12 +17,14 @@ import { BottomNav } from '../../components/BottomNav';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const { width } = Dimensions.get('window');
 
 const TABS = ['All', 'Pending', 'Approved', 'History', 'Drafts'];
 const TAB_WIDTH = width / 5;
 
 export default function MyLeaves() {
+  const { colors } = useAppTheme();
   const { leaves } = useLeave();
   const [activeTab, setActiveTab] = useState('All');
   const indicatorPosition = useSharedValue(0);
@@ -176,7 +178,7 @@ export default function MyLeaves() {
 
               <View style={styles.cardBottom}>
                 <View style={styles.durationWrap}>
-                  <Ionicons name="time-outline" size={14} color="#64748b" />
+                  <Ionicons name="time-outline" size={14} color={colors.textMuted} />
                   <Text style={styles.durationText}>{item.days} day{item.days > 1 ? 's' : ''} total</Text>
                 </View>
 
@@ -192,7 +194,7 @@ export default function MyLeaves() {
                     </TouchableOpacity>
                   ) : (
                     <View style={{ marginRight: 16, flexDirection: 'row', alignItems: 'center', opacity: 0.5 }}>
-                      <Ionicons name="pencil" size={14} color="#94a3b8" />
+                      <Ionicons name="pencil" size={14} color={colors.textMuted} />
                       <Text style={[styles.viewDetailsText, { color: '#94a3b8', marginLeft: 4 }]}>Edit</Text>
                     </View>
                   )}

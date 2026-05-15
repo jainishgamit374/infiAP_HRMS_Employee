@@ -7,7 +7,9 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Link } from 'expo-router';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function HomeScreen() {
+  const { colors } = useAppTheme();
   return (
     <ParallaxScrollView
       headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}

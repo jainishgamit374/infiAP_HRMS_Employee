@@ -14,7 +14,9 @@ import { AdminBottomNav } from '../../components/AdminBottomNav';
 import Header from '../../components/layout/Header';
 import { ADMIN_API_URL } from '../../constants/api';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function ManageHR() {
+  const { colors } = useAppTheme();
   const [hrStaff, setHRStaff] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -116,11 +118,11 @@ export default function ManageHR() {
 
             <View style={styles.detailsRow}>
               <View style={styles.detail}>
-                <Ionicons name="calendar-outline" size={14} color="#64748b" />
+                <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
                 <Text style={styles.detailText}>Joined: {new Date(hr.joiningDate).toLocaleDateString()}</Text>
               </View>
               <View style={styles.detail}>
-                <Ionicons name="key-outline" size={14} color="#64748b" />
+                <Ionicons name="key-outline" size={14} color={colors.textMuted} />
                 <Text style={styles.detailText}>{hr.permissions?.length || 0} Permissions</Text>
               </View>
             </View>

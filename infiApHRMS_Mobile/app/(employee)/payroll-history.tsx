@@ -7,6 +7,7 @@ import Animated, { FadeInDown, SlideInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const HISTORY_DATA = [
   { id: '1', month: 'September 2023', salary: '$3,450.00', date: 'Sept 30', status: 'Paid', year: '2023' },
   { id: '2', month: 'August 2023', salary: '$3,450.00', date: 'Aug 31', status: 'Paid', year: '2023' },
@@ -19,6 +20,7 @@ const HISTORY_DATA = [
 const YEARS = ['2023', '2022', '2021'];
 
 export default function PayrollHistory() {
+  const { colors } = useAppTheme();
   const [activeYear, setActiveYear] = useState('2023');
   const [detailsVisible, setDetailsVisible] = useState(false);
 
@@ -47,7 +49,7 @@ export default function PayrollHistory() {
               >
                 <View style={styles.historyLeading}>
                   <View style={styles.fileIconBox}>
-                    <Ionicons name="document-text-outline" size={24} color="#64748b" />
+                    <Ionicons name="document-text-outline" size={24} color={colors.textMuted} />
                   </View>
                   <View>
                     <Text style={styles.historyMonth}>{item.month}</Text>
@@ -78,7 +80,7 @@ export default function PayrollHistory() {
              <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Salary Breakdown</Text>
                 <TouchableOpacity onPress={() => setDetailsVisible(false)}>
-                   <Ionicons name="close-circle" size={32} color="#64748b" />
+                   <Ionicons name="close-circle" size={32} color={colors.textMuted} />
                 </TouchableOpacity>
              </View>
              

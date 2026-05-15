@@ -7,7 +7,9 @@ import { useUser } from '../../context/UserContext';
 import Header from '../../components/layout/Header';
 import { resolveImageSource } from '@/utils/image';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function ProfileSettingsPage() {
+  const { colors } = useAppTheme();
   const { user, updateSettings } = useUser();
 
   const renderSectionHeader = (icon: any, title: string) => (
@@ -52,9 +54,9 @@ export default function ProfileSettingsPage() {
           thumbColor="#fff"
         />
       ) : hasArrow ? (
-        <Ionicons name="chevron-forward" size={20} color="#94a3b8" />
+        <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
       ) : icon ? (
-        <Ionicons name={icon} size={20} color="#94a3b8" />
+        <Ionicons name={icon} size={20} color={colors.textMuted} />
       ) : null}
     </TouchableOpacity>
   );

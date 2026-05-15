@@ -4,9 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import Header from '../../components/layout/Header';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const MOCK_WFH: any[] = [];  // Empty initial data - will be fetched from API
 
 const WFHCard = ({ item, index }: { item: any, index: number }) => {
+  const { colors } = useAppTheme();
   const status = item.status || 'Pending';
   const isApproved = status.toLowerCase() === 'approved';
 
@@ -35,11 +37,11 @@ const WFHCard = ({ item, index }: { item: any, index: number }) => {
       
       <View style={styles.cardFooter}>
         <View style={styles.footerItem}>
-          <Ionicons name="time-outline" size={16} color="#64748b" />
+          <Ionicons name="time-outline" size={16} color={colors.textMuted} />
           <Text style={styles.footerText}>{item.duration}</Text>
         </View>
         <View style={styles.footerItem}>
-          <Ionicons name="location-outline" size={16} color="#64748b" />
+          <Ionicons name="location-outline" size={16} color={colors.textMuted} />
           <Text style={styles.footerText}>Remote</Text>
         </View>
       </View>
@@ -48,6 +50,7 @@ const WFHCard = ({ item, index }: { item: any, index: number }) => {
 };
 
 export default function UpcomingWFH() {
+  const { colors } = useAppTheme();
   const [wfhList, setWfhList] = useState(MOCK_WFH);
 
   const getDayOfWeek = (dateString: string) => {

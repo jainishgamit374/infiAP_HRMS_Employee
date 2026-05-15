@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import Header from '../../components/layout/Header';
 import { BottomNav } from '../../components/BottomNav';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: '1. Who Can Use Our Services',
@@ -87,6 +88,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
 ];
 
 export default function TermsOfServiceScreen() {
+  const { colors } = useAppTheme();
   return (
     <View style={styles.root}>
       <Header title="Terms of Service" showBack={true} />

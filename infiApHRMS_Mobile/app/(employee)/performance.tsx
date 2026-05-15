@@ -20,6 +20,7 @@ import { useUser } from '../../context/UserContext';
 import { resolveImageSource } from '../../utils/image';
 import { fetchEmployeePerformance, fetchPerformanceTrends, PerformanceData, PerformanceTrendItem } from '../../services/performance';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const { width } = Dimensions.get('window');
 
 // Components
@@ -97,6 +98,7 @@ const PerformanceBar = ({ item, index }: any) => {
 };
 
 export default function PerformanceDashboard() {
+  const { colors } = useAppTheme();
   const { user } = useUser();
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [trends, setTrends] = useState<PerformanceTrendItem[]>([]);
@@ -224,7 +226,7 @@ export default function PerformanceDashboard() {
                 <Text style={[styles.cardLabel, styles.statsCard_label]}>Project Rating</Text>
                 <View style={styles.rowBetween}>
                   <Text style={styles.statValue}>{performance ? (performance.monthlyScore >= 85 ? 'Excellent' : performance.monthlyScore >= 70 ? 'Good' : 'Average') : 'N/A'}</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#94a3b8" />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                 </View>
                 <View style={styles.starsRow}>
                   {[1,2,3,4,5].map(s => (

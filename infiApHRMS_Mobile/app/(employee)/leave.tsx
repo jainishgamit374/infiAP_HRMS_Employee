@@ -6,9 +6,11 @@ import { BottomNav } from '../../components/BottomNav';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const { width } = Dimensions.get('window');
 
 export default function LeaveManagement() {
+  const { colors } = useAppTheme();
   const menuItems = [
     {
       id: 'apply',

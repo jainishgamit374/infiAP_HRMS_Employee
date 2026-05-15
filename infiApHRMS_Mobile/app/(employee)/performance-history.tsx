@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
+import { useAppTheme } from '@/context/ThemeContext';
 import Animated, { 
   FadeInDown, 
   FadeInRight,
@@ -41,6 +42,7 @@ const HISTORY_DATA = [
 ];
 
 const TimelineCard = ({ data, index }: { data: typeof HISTORY_DATA[0], index: number }) => {
+  const { colors } = useAppTheme();
   return (
     <Animated.View 
       entering={FadeInDown.delay(index * 200).springify()}
@@ -74,7 +76,7 @@ const TimelineCard = ({ data, index }: { data: typeof HISTORY_DATA[0], index: nu
         <View style={styles.milestoneRow}>
           {data.milestones.map((m, i) => (
             <View key={i} style={styles.milestoneBadge}>
-              <Ionicons name="trophy-outline" size={10} color="#64748b" />
+              <Ionicons name="trophy-outline" size={10} color={colors.textMuted} />
               <Text style={styles.milestoneText}>{m}</Text>
             </View>
           ))}
@@ -85,6 +87,7 @@ const TimelineCard = ({ data, index }: { data: typeof HISTORY_DATA[0], index: nu
 };
 
 export default function PerformanceHistory() {
+  const { colors } = useAppTheme();
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />

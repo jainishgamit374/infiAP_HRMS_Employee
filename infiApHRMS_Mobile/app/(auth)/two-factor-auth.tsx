@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '../../context/UserContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { useAppTheme } from '@/context/ThemeContext';
 import {
   clearPendingTwoFactorChallenge,
   getPendingTwoFactorChallenge,
@@ -18,6 +19,7 @@ import {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function TwoFactorAuth() {
+  const { colors } = useAppTheme();
   const { updateUser, syncUserFromApi } = useUser();
   const params = useLocalSearchParams<{ email?: string }>();
   const [code, setCode] = useState<string>('');

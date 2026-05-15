@@ -7,7 +7,9 @@ import { useLeave } from '../../context/LeaveContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function LeaveDetails() {
+  const { colors } = useAppTheme();
   const { id } = useLocalSearchParams();
   const { leaves } = useLeave();
   

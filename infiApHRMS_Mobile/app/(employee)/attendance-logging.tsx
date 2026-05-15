@@ -15,6 +15,7 @@ import Header from '../../components/layout/Header';
 import { submitEmployeePunch } from '../../services/auth';
 import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const WORK_MODES = [
   { id: 'office', label: 'Office', icon: 'business-outline', activeIcon: 'business' },
   { id: 'wfh', label: 'WFH', icon: 'home-outline', activeIcon: 'home' },
@@ -41,6 +42,7 @@ const createLocationRegion = (location: Pick<CurrentLocation, 'latitude' | 'long
 });
 
 export default function AttendanceLogging() {
+  const { colors } = useAppTheme();
   const mapRef = useRef<MapView | null>(null);
   const [selectedMode, setSelectedMode] = useState('office');
   const [isConfirming, setIsConfirming] = useState(false);
@@ -247,7 +249,7 @@ export default function AttendanceLogging() {
             <Ionicons
               name={locationLoading ? "sync" : "refresh"}
               size={24}
-              color="#1e293b"
+              color={colors.text}
             />
           </TouchableOpacity>
         }
@@ -327,7 +329,7 @@ export default function AttendanceLogging() {
                 {locationLoading ? (
                   <ActivityIndicator size="large" color="#4f46e5" />
                 ) : (
-                  <Ionicons name="map-outline" size={48} color="#94a3b8" />
+                  <Ionicons name="map-outline" size={48} color={colors.textMuted} />
                 )}
               </View>
             )}
@@ -346,21 +348,21 @@ export default function AttendanceLogging() {
                   </TouchableOpacity>
 
                   <TouchableOpacity style={styles.mapIconButton} onPress={cycleMapType} activeOpacity={0.85}>
-                    <Ionicons name="layers-outline" size={18} color="#1e293b" />
+                    <Ionicons name="layers-outline" size={18} color={colors.text} />
                   </TouchableOpacity>
                 </View>
 
                 <View style={styles.mapZoomControls}>
                   <TouchableOpacity style={styles.mapControlButton} onPress={() => handleZoom('in')} activeOpacity={0.85}>
-                    <Ionicons name="add" size={22} color="#1e293b" />
+                    <Ionicons name="add" size={22} color={colors.text} />
                   </TouchableOpacity>
                   <View style={styles.mapControlDivider} />
                   <TouchableOpacity style={styles.mapControlButton} onPress={() => handleZoom('out')} activeOpacity={0.85}>
-                    <Ionicons name="remove" size={22} color="#1e293b" />
+                    <Ionicons name="remove" size={22} color={colors.text} />
                   </TouchableOpacity>
                   <View style={styles.mapControlDivider} />
                   <TouchableOpacity style={styles.mapControlButton} onPress={handleRecenterMap} activeOpacity={0.85}>
-                    <Ionicons name="locate-outline" size={20} color="#1e293b" />
+                    <Ionicons name="locate-outline" size={20} color={colors.text} />
                   </TouchableOpacity>
                 </View>
               </>

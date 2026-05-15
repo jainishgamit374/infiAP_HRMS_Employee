@@ -11,12 +11,14 @@ import { useLeave, LeaveRequest } from '../../context/LeaveContext';
 import { BottomNav } from '../../components/BottomNav';
 import Header from '../../components/layout/Header';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const { width } = Dimensions.get('window');
 
 const TABS = ['All', 'Approved', 'Rejected'];
 const TAB_WIDTH = width / 3;
 
 export default function LeaveApprovals() {
+  const { colors } = useAppTheme();
   const { leaves } = useLeave();
   const [activeTab, setActiveTab] = useState('All');
   const indicatorPosition = useSharedValue(0);
@@ -129,7 +131,7 @@ export default function LeaveApprovals() {
               <View style={styles.cardHeader}>
                 <View style={styles.employeeInfo}>
                   <View style={styles.avatarPlaceholder}>
-                    <Ionicons name="person" size={18} color="#64748b" />
+                    <Ionicons name="person" size={18} color={colors.textMuted} />
                   </View>
                   <View>
                     <Text style={styles.employeeName}>{item.employeeName || 'You'}</Text>

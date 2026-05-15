@@ -5,12 +5,14 @@ import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
 import { useNotifications, Notification, NotificationType } from '../../context/NotificationContext';
 import Header from '../../components/layout/Header';
+import { useAppTheme } from '@/context/ThemeContext';
 import Animated, { 
   FadeInDown, 
   Layout, 
 } from 'react-native-reanimated';
 
 const NotificationIcon = ({ type }: { type: NotificationType }) => {
+  const { colors } = useAppTheme();
   switch (type) {
     case 'leave':
       return <View style={[styles.iconBox, { backgroundColor: '#eff6ff' }]}><Ionicons name="calendar" size={20} color="#3b82f6" /></View>;
@@ -23,11 +25,12 @@ const NotificationIcon = ({ type }: { type: NotificationType }) => {
     case 'system':
       return <View style={[styles.iconBox, { backgroundColor: '#fff7ed' }]}><Ionicons name="megaphone" size={20} color="#f59e0b" /></View>;
     default:
-      return <View style={[styles.iconBox, { backgroundColor: '#f1f5f9' }]}><Ionicons name="notifications" size={20} color="#64748b" /></View>;
+      return <View style={[styles.iconBox, { backgroundColor: '#f1f5f9' }]}><Ionicons name="notifications" size={20} color={colors.textMuted} /></View>;
   }
 };
 
 export default function NotificationsPage() {
+  const { colors } = useAppTheme();
   const { notifications, isLoading, error, refreshNotifications, markAsRead, markAllAsRead } = useNotifications();
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const unreadCount = useMemo(() => notifications.filter((item) => !item.isRead).length, [notifications]);

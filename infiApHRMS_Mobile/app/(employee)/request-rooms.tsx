@@ -13,6 +13,7 @@ import { router } from 'expo-router';
 import { BottomNav } from '../../components/BottomNav';
 import Header from '../../components/layout/Header';
 import { useUser } from '../../context/UserContext';
+import { useAppTheme } from '@/context/ThemeContext';
 import {
   fetchMyRequestRooms,
   type RequestRoom,
@@ -33,6 +34,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 export default function RequestRoomsPage() {
+  const { colors } = useAppTheme();
   const { user } = useUser();
   const [rooms, setRooms] = useState<RequestRoom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -153,7 +155,7 @@ export default function RequestRoomsPage() {
               ) : null}
               {room.messages && room.messages.length > 0 && (
                 <View style={styles.messagePreview}>
-                  <Ionicons name="chatbubble-ellipses-outline" size={14} color="#94a3b8" />
+                  <Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.textMuted} />
                   <Text style={styles.messagePreviewText} numberOfLines={1}>
                     {typeof room.messages[room.messages.length - 1].sender === 'string'
                       ? ''

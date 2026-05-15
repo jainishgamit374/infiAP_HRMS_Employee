@@ -5,7 +5,9 @@ import { BottomNav } from '../../components/BottomNav';
 import Header from '../../components/layout/Header';
 import { fetchAttendanceHistory, type AttendanceRecord } from '../../services/auth';
 
+import { useAppTheme } from '@/context/ThemeContext';
 export default function AttendanceHistory() {
+  const { colors } = useAppTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -130,11 +132,11 @@ export default function AttendanceHistory() {
         <View style={styles.calendarCard}>
           <View style={styles.calendarHeader}>
             <TouchableOpacity onPress={() => changeMonth(-1)}>
-              <Ionicons name="chevron-back" size={20} color="#1e293b" />
+              <Ionicons name="chevron-back" size={20} color={colors.text} />
             </TouchableOpacity>
             <Text style={styles.monthTitle}>{monthName} {year}</Text>
             <TouchableOpacity onPress={() => changeMonth(1)}>
-              <Ionicons name="chevron-forward" size={20} color="#1e293b" />
+              <Ionicons name="chevron-forward" size={20} color={colors.text} />
             </TouchableOpacity>
           </View>
 

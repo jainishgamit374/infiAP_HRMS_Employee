@@ -6,6 +6,7 @@ import { BottomNav } from '../../../components/BottomNav';
 import { useNotifications } from '../../../context/NotificationContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../../components/layout/Header';
+import { useAppTheme } from '@/context/ThemeContext';
 import Animated, { 
   FadeInDown, 
   FadeIn, 
@@ -223,6 +224,7 @@ const styles = StyleSheet.create({
 });
 
 const NotificationDetails = () => {
+  const { colors } = useAppTheme();
   const { id } = useLocalSearchParams();
   const { getNotificationById } = useNotifications();
 
@@ -250,7 +252,7 @@ const NotificationDetails = () => {
         showBack={true} 
         rightElement={
           <TouchableOpacity style={styles.menuButton}>
-            <Ionicons name="ellipsis-vertical" size={24} color="#64748b" />
+            <Ionicons name="ellipsis-vertical" size={24} color={colors.textMuted} />
           </TouchableOpacity>
         }
       />
@@ -329,7 +331,7 @@ const NotificationDetails = () => {
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.8}>
-                <Ionicons name="checkbox-outline" size={20} color="#1e293b" style={{marginRight: 8}} />
+                <Ionicons name="checkbox-outline" size={20} color={colors.text} style={{marginRight: 8}} />
                 <Text style={styles.secondaryButtonText}>Acknowledge Receipt</Text>
             </TouchableOpacity>
           </View>
@@ -354,7 +356,7 @@ const NotificationDetails = () => {
                   <Text style={styles.attachmentSize}>{notification.attachment.size}</Text>
                </View>
                <TouchableOpacity style={styles.downloadButton} onPress={() => Alert.alert('Download Started', `Downloading ${notification.attachment?.name || 'file'}`)}>
-                  <Ionicons name="download-outline" size={20} color="#94a3b8" />
+                  <Ionicons name="download-outline" size={20} color={colors.textMuted} />
                </TouchableOpacity>
             </View>
           </Animated.View>

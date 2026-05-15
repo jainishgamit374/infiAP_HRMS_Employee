@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const NewsAndEvents = () => {
   return (
     <View style={styles.container}>

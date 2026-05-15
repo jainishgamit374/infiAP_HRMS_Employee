@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Header from '../../components/layout/Header';
+import { useAppTheme } from '@/context/ThemeContext';
 import Animated, { 
   FadeInDown, 
   FadeIn, 
@@ -51,6 +52,7 @@ const MOCK_EVENTS = [
 ];
 
 const EventCard = ({ item, index }: { item: typeof MOCK_EVENTS[0]; index: number }) => {
+  const { colors } = useAppTheme();
   return (
     <Animated.View 
       entering={FadeInDown.delay(index * 100).springify()}
@@ -66,11 +68,11 @@ const EventCard = ({ item, index }: { item: typeof MOCK_EVENTS[0]; index: number
         </View>
         <Text style={styles.cardTitle}>{item.title}</Text>
         <View style={styles.infoRow}>
-          <Ionicons name="time-outline" size={16} color="#64748b" />
+          <Ionicons name="time-outline" size={16} color={colors.textMuted} />
           <Text style={styles.infoText}>{item.time}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Ionicons name="location-outline" size={16} color="#64748b" />
+          <Ionicons name="location-outline" size={16} color={colors.textMuted} />
           <Text style={styles.infoText} numberOfLines={1}>{item.location}</Text>
         </View>
         <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
@@ -80,6 +82,7 @@ const EventCard = ({ item, index }: { item: typeof MOCK_EVENTS[0]; index: number
 };
 
 export default function EventsPage() {
+  const { colors } = useAppTheme();
   const [activeTab, setActiveTab] = useState<'Upcoming' | 'Past'>('Upcoming');
   const [events, setEvents] = useState(MOCK_EVENTS);
   const [modalVisible, setModalVisible] = useState(false);
@@ -197,7 +200,7 @@ export default function EventsPage() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add New Event</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color="#64748b" />
+                <Ionicons name="close" size={24} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 

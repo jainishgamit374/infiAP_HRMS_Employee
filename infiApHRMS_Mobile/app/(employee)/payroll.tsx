@@ -6,6 +6,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { BottomNav } from '../../components/BottomNav';
 import Header from '../../components/layout/Header';
+import { useAppTheme } from '@/context/ThemeContext';
 import {
   fetchPayrollCurrent,
   fetchPayrollHistory,
@@ -217,6 +218,7 @@ const getDeductionRows = (item?: PayrollCurrentData | null) => {
 };
 
 export default function PayrollDashboard() {
+  const { colors } = useAppTheme();
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -388,7 +390,7 @@ export default function PayrollDashboard() {
                 <TouchableOpacity style={styles.historyBtn} activeOpacity={0.7} onPress={() => setDetailsVisible(true)}>
                   <View style={styles.historyLeading}>
                     <View style={styles.fileIconBox}>
-                      <Ionicons name="document-text-outline" size={24} color="#64748b" />
+                      <Ionicons name="document-text-outline" size={24} color={colors.textMuted} />
                     </View>
                     <View>
                       <Text style={styles.historyMonth}>{item.monthYear || formatMonthYear(item.month, item.year)}</Text>
@@ -434,7 +436,7 @@ export default function PayrollDashboard() {
              <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Salary Breakdown</Text>
                 <TouchableOpacity onPress={() => setDetailsVisible(false)}>
-                   <Ionicons name="close-circle" size={32} color="#64748b" />
+                   <Ionicons name="close-circle" size={32} color={colors.textMuted} />
                 </TouchableOpacity>
              </View>
              

@@ -11,6 +11,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
 
+import { useAppTheme } from '@/context/ThemeContext';
 // ── Types ──
 interface AttendanceRecord {
   id: string;
@@ -47,6 +48,7 @@ type TimeTab = 'Daily' | 'Weekly' | 'Monthly';
 type CorrectionTab = 'Pending' | 'Approved' | 'Rejected';
 
 export default function AttendancePage() {
+  const { colors } = useAppTheme();
   // State
   const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<CorrectionRequest[]>(INITIAL_CORRECTIONS);
@@ -575,7 +577,7 @@ export default function AttendancePage() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>📊 Attendance Report</Text>
               <TouchableOpacity onPress={() => setReportVisible(false)}>
-                <Ionicons name="close-circle" size={28} color="#94a3b8" />
+                <Ionicons name="close-circle" size={28} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             <Text style={styles.reportSubTitle}>{activeTab} — {selectedDept} Department</Text>
@@ -651,7 +653,7 @@ export default function AttendancePage() {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Correction Detail</Text>
               <TouchableOpacity onPress={() => setDetailModalVisible(false)}>
-                <Ionicons name="close-circle" size={28} color="#94a3b8" />
+                <Ionicons name="close-circle" size={28} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             {selectedCorrection && (

@@ -11,6 +11,7 @@ import { useAttendanceSession } from '../../hooks/useAttendanceSession';
 import { useUser } from '@/context/UserContext';
 import { fetchAttendanceSummary, fetchDashboardHome, submitEmployeePunch } from '@/services/auth';
 import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
+import { useAppTheme } from '@/context/ThemeContext';
 const { width } = Dimensions.get('window');
 
 // Mock SVGs / Images using Ionicons and Views
@@ -226,6 +227,7 @@ const FeatureCard = ({ icon, title, sub, color, bgColor, route, delay, unreadCou
 
 
 export default function EmployeeDashboard() {
+  const { colors } = useAppTheme();
   const { notifications } = useNotifications();
   const { user } = useUser();
   const unreadCount = notifications.filter(n => !n.isRead).length;

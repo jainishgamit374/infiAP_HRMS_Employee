@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import Header from '../../components/layout/Header';
 import { BottomNav } from '../../components/BottomNav';
 
+import { useAppTheme } from '@/context/ThemeContext';
 const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: '1. What Data We Collect',
@@ -95,6 +96,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
 ];
 
 export default function PrivacyPolicyScreen() {
+  const { colors } = useAppTheme();
   return (
     <View style={styles.root}>
       <Header title="Privacy Policy" showBack={true} />
