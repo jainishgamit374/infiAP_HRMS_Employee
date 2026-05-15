@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Modal, ActivityIndicator, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Print from 'expo-print';
@@ -7,6 +7,8 @@ import * as Sharing from 'expo-sharing';
 import { BottomNav } from '../../components/BottomNav';
 import Header from '../../components/layout/Header';
 import { useAppTheme } from '@/context/ThemeContext';
+import { useUser } from '../../context/UserContext';
+import { resolveImageSource } from '../../utils/image';
 import {
   fetchPayrollCurrent,
   fetchPayrollHistory,
@@ -217,14 +219,23 @@ const getDeductionRows = (item?: PayrollCurrentData | null) => {
   return total > 0 ? [{ category: 'Deductions', amount: total }] : [];
 };
 
+type PayrollTrendPoint = {
+  month: string;
+  net: number;
+};
+
 export default function PayrollDashboard() {
   const { colors } = useAppTheme();
+  const { user } = useUser();
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [current, setCurrent] = useState<PayrollCurrentData | null>(null);
   const [historyData, setHistoryData] = useState<PayrollHistoryItem[]>([]);
+  const [historySummary, setHistorySummary] = useState<{ totalYTD?: number; ytdGrowth?: string; avgNet?: number; avgPeriod?: string } | null>(null);
+  const [trendData, setTrendData] = useState<PayrollTrendPoint[]>([]);
+  const avatarSource = resolveImageSource(user.avatar);
 
   useEffect(() => {
     let isMounted = true;
@@ -234,6 +245,8 @@ export default function PayrollDashboard() {
         if (!isMounted) return;
         setCurrent(cur.data);
         setHistoryData(hist.data?.paymentHistory || (Array.isArray(hist.data as any) ? (hist.data as any) : []));
+        setHistorySummary(hist.data?.summary || null);
+        setTrendData(Array.isArray((hist.data as any)?.trend) ? (hist.data as any).trend : []);
       } catch (error) {
         console.warn('Failed to load payroll:', error);
       } finally {
@@ -251,6 +264,13 @@ export default function PayrollDashboard() {
   const statusLabel = current?.status || 'PAID';
   const earningsRows = getEarningsRows(current);
   const deductionRows = getDeductionRows(current);
+  const chartData = trendData.length > 0
+    ? trendData
+    : historyData.slice(0, 6).map((item) => ({
+        month: (item.monthYear || formatMonthYear(item.month, item.year)).split(' ')[0]?.slice(0, 3).toUpperCase() || '—',
+        net: getNetPay(item),
+      })).reverse();
+  const chartMax = Math.max(...chartData.map((item) => item.net), 1);
 
   const handleDownload = async () => {
     if (downloading) return;
@@ -320,6 +340,13 @@ export default function PayrollDashboard() {
         {/* Salary Card */}
         <Animated.View entering={FadeInDown.duration(600).springify()} style={styles.salaryCard}>
           <View style={styles.cardDecoration} />
+          <View style={styles.profileLine}>
+            <Image source={avatarSource} style={styles.profileAvatar} />
+            <View style={styles.profileMeta}>
+              <Text style={styles.profileName}>{user.name || 'Employee'}</Text>
+              <Text style={styles.profileSub}>{user.department || 'General'} • {user.employeeId || 'N/A'}</Text>
+            </View>
+          </View>
           <View style={styles.cardHeader}>
             <Text style={styles.cardLabel}>Salary Month ({currentMonth || '—'})</Text>
             <View style={styles.paidBadge}>
@@ -336,6 +363,41 @@ export default function PayrollDashboard() {
             <Text style={styles.payDateText}>Pay Date: {payDate || '—'}</Text>
           </View>
         </Animated.View>
+
+        {/* Payroll Summary */}
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Total YTD</Text>
+            <Text style={styles.summaryValue}>{historySummary?.totalYTD ? formatINR(historySummary.totalYTD) : '—'}</Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Growth</Text>
+            <Text style={styles.summaryValue}>{historySummary?.ytdGrowth || '—'}</Text>
+          </View>
+        </View>
+
+        {/* Trend */}
+        <View style={styles.trendCard}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Salary Trend</Text>
+            <Text style={styles.sectionLink}>{historySummary?.avgPeriod || 'Recent months'}</Text>
+          </View>
+          <View style={styles.chartArea}>
+            {chartData.length === 0 ? (
+              <Text style={{ color: '#94a3b8', fontWeight: '600' }}>No trend data available.</Text>
+            ) : (
+              chartData.map((item) => {
+                const barHeight = Math.max(28, Math.round((item.net / chartMax) * 96));
+                return (
+                  <View key={item.month} style={styles.barContainer}>
+                    <View style={[styles.bar, { height: barHeight, backgroundColor: item.month === chartData[chartData.length - 1]?.month ? '#4f46e5' : '#c7d2fe' }]} />
+                    <Text style={styles.barLabel}>{item.month}</Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        </View>
 
 
 
@@ -505,6 +567,35 @@ const styles = StyleSheet.create({
     elevation: 10,
     marginBottom: 30,
   },
+  profileLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  profileAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+  },
+  profileMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  profileName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  profileSub: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.78)',
+    fontWeight: '600',
+    marginTop: 2,
+  },
   cardDecoration: {
     position: 'absolute',
     right: -20,
@@ -551,6 +642,37 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  summaryCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  summaryLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#1e293b',
+    marginTop: 8,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
