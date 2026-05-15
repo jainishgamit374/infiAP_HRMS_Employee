@@ -6,6 +6,7 @@ const Activity = require("../models/activity.model");
 const SecurityRequest = require("../models/securityRequest.model");
 const Notification = require("../models/notification.model");
 const SystemAlert = require("../models/systemAlert.model");
+const { pushNotifyUsers } = require("../utils/pushNotifier");
 
 const ACTIVE_STAFF_ROLES = ["employee", "manager", "hr", "admin"];
 const REQUIRED_INTEGRATIONS = ["cloud", "email", "security"];
@@ -939,6 +940,28 @@ exports.broadcastMessage = async (req, res) => {
             icon: "megaphone",
             color: "#7c3aed"
         });
+
+        // Send push notifications to targeted users (fire-and-forget).
+        if (!isScheduled) {
+            let targetUserFilter = { status: "Active" };
+            if (targetedAudience === "hr") {
+                targetUserFilter = { ...targetUserFilter, role: "hr" };
+            } else if (targetedAudience === "department") {
+                targetUserFilter = {
+                    ...targetUserFilter,
+                    role: { $in: ACTIVE_STAFF_ROLES },
+                    department: { $in: normalizedDepartments }
+                };
+            } else {
+                targetUserFilter = { ...targetUserFilter, role: { $in: ACTIVE_STAFF_ROLES } };
+            }
+            User.find(targetUserFilter).select("_id").lean().then((users) => {
+                const userIds = users.map((u) => u._id);
+                if (userIds.length > 0) {
+                    pushNotifyUsers(userIds, headline, details, { category, notificationId: String(notification._id), broadcast: true });
+                }
+            }).catch(() => {});
+        }
 
         return res.status(201).json({
             success: true,

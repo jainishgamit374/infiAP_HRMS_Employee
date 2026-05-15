@@ -30,6 +30,7 @@ const formatNotification = (n, userId) => {
     readAt: isPersonal ? n.readAt || null : null,
     isRead,
     createdAt: n.createdAt,
+    relatedRoomId: n.relatedRoomId || null,
   };
 };
 
@@ -141,5 +142,27 @@ exports.markAllRead = async (req, res) => {
     return res
       .status(500)
       .json({ status: "Error", message: "Failed to mark all as read", error: error.message });
+  }
+};
+
+exports.registerPushToken = async (req, res) => {
+  try {
+    const userId = req.user && req.user._id;
+    const { token } = req.body;
+    if (!userId) {
+      return res.status(401).json({ status: "Error", message: "Unauthorized" });
+    }
+    if (!token || typeof token !== "string" || !token.startsWith("ExponentPushToken[")) {
+      return res.status(400).json({ status: "Error", message: "Invalid push token" });
+    }
+
+    const User = require("../models/user.model");
+    await User.findByIdAndUpdate(userId, { $addToSet: { expoPushTokens: token } });
+
+    return res.status(200).json({ status: "Success", message: "Push token registered" });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ status: "Error", message: "Failed to register push token", error: error.message });
   }
 };

@@ -1,5 +1,7 @@
 const LeaveApplication = require("../models/leaveApplication.model");
+const LeaveBalance = require("../models/leaveBalance.model");
 const User = require("../models/user.model");
+const RequestRoom = require("../models/requestRoom.model");
 const { notifyUser } = require("../utils/notifier");
 
 const normalizeLeaveDate = (value) => {
@@ -106,6 +108,31 @@ exports.applyLeave = async (req, res) => {
             UpdatedBy: userId
         });
 
+        try {
+            const hrAndAdmins = await User.find({
+                role: { $in: ["hr", "admin", "superadmin"] },
+                status: "Active",
+            }).select("_id").lean();
+            const participantIds = [userId, ...hrAndAdmins.map((u) => u._id)];
+            const dateRange = normalizedStartDate && normalizedEndDate
+                ? ` (${new Date(normalizedStartDate).toDateString()} - ${new Date(normalizedEndDate).toDateString()})`
+                : "";
+            await RequestRoom.create({
+                title: `Leave Request: ${LeaveType}${dateRange}`,
+                description: Reason,
+                requestType: "leave",
+                leaveType: LeaveType,
+                requestData: { startDate: normalizedStartDate, endDate: normalizedEndDate, isHalfDay: IsHalfDay, isFirstHalf: IsFirstHalf },
+                status: "pending",
+                createdBy: userId,
+                participants: participantIds,
+                relatedLeaveId: leaveApp._id,
+            });
+            console.log(`[Leave] RequestRoom created for leave ${leaveApp._id}`);
+        } catch (roomErr) {
+            console.warn("[Leave] RequestRoom creation failed (non-blocking):", roomErr.message);
+        }
+
         res.status(200).json({
             status: "Success",
             message: "Leave application submitted successfully.",
@@ -180,30 +207,70 @@ exports.approveLeave = async (req, res) => {
         const approverName = (req.user && req.user.name) || "Approver";
         const isReject = String(Action || "").toLowerCase() === "reject";
 
-        const updated = await LeaveApplication.findByIdAndUpdate(
-            TranID,
-            {
-                ApprovalStatusID: isReject ? 4 : 1,
-                ApprovalStatus: isReject ? "Rejected" : "Approved",
-                ApproverID: approverID,
-                ApprovalUsername: approverName,
-            },
-            { new: true }
-        );
+        const leave = await LeaveApplication.findById(TranID);
+        if (!leave) {
+            return res.status(404).json({ status: "Error", message: "Leave application not found" });
+        }
 
-        if (updated && updated.EmployeeID) {
+        const previousStatus = leave.ApprovalStatus;
+
+        leave.ApprovalStatusID = isReject ? 4 : 1;
+        leave.ApprovalStatus = isReject ? "Rejected" : "Approved";
+        leave.ApproverID = approverID;
+        leave.ApprovalUsername = approverName;
+        await leave.save();
+
+        // Calculate leave days
+        let days = 0.5;
+        if (!leave.IsHalfDay) {
+            const diffTime = Math.abs(leave.EndDate - leave.StartDate);
+            days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        }
+
+        // Map LeaveType to balance key
+        const typeLower = leave.LeaveType.toLowerCase();
+        let balanceKey = null;
+        if (typeLower.includes('privilege') || typeLower.includes('pl')) balanceKey = 'PL';
+        else if (typeLower.includes('casual') || typeLower.includes('cl')) balanceKey = 'CL';
+        else if (typeLower.includes('sick') || typeLower.includes('sl')) balanceKey = 'SL';
+
+        // Adjust leave balance
+        if (balanceKey) {
+            const balance = await LeaveBalance.findOne({ userId: leave.EmployeeID });
+            if (balance) {
+                if (!isReject && previousStatus !== 'Approved') {
+                    balance[balanceKey] = Math.max(0, balance[balanceKey] - days);
+                    await balance.save();
+                } else if (isReject && previousStatus === 'Approved') {
+                    balance[balanceKey] = balance[balanceKey] + days;
+                    await balance.save();
+                }
+            }
+        }
+
+        if (leave.EmployeeID) {
             const dateRange =
-                updated.StartDate && updated.EndDate
-                    ? ` (${new Date(updated.StartDate).toDateString()} - ${new Date(updated.EndDate).toDateString()})`
+                leave.StartDate && leave.EndDate
+                    ? ` (${new Date(leave.StartDate).toDateString()} - ${new Date(leave.EndDate).toDateString()})`
                     : "";
+            let room = null;
+            try {
+                room = await RequestRoom.findOneAndUpdate(
+                    { relatedLeaveId: leave._id },
+                    { status: isReject ? "rejected" : "approved" }
+                );
+            } catch (roomErr) {
+                console.warn("[Leave] RequestRoom update failed (non-blocking):", roomErr.message);
+            }
             await notifyUser({
-                recipient: updated.EmployeeID,
+                recipient: leave.EmployeeID,
                 category: "leave",
                 headline: isReject ? "Leave Request Rejected" : "Leave Request Approved",
                 details: isReject
-                    ? `Your ${updated.LeaveType} leave${dateRange} was rejected by ${approverName}.${Reason ? " Reason: " + Reason : ""}`
-                    : `Your ${updated.LeaveType} leave${dateRange} has been approved by ${approverName}.`,
+                    ? `Your ${leave.LeaveType} leave${dateRange} was rejected by ${approverName}.${Reason ? " Reason: " + Reason : ""}`
+                    : `Your ${leave.LeaveType} leave${dateRange} has been approved by ${approverName}.`,
                 sentBy: approverID,
+                relatedRoomId: room?._id || null,
             });
         }
 

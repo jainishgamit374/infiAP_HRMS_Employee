@@ -4,6 +4,7 @@ const LeaveBalance = require("../models/leaveBalance.model");
 const LeaveApplication = require("../models/leaveApplication.model");
 const EmployeeOfTheMonth = require("../models/employeeOfTheMonth.model");
 const Holiday = require("../models/holiday.model");
+const RequestRoom = require("../models/requestRoom.model");
 const moment = require("moment");
 const { notifyUser } = require("../utils/notifier");
 
@@ -659,6 +660,31 @@ exports.applyLeave = async (req, res) => {
 
         await leaveApp.save();
 
+        try {
+            const hrAndAdmins = await User.find({
+                role: { $in: ["hr", "admin", "superadmin"] },
+                status: "Active",
+            }).select("_id").lean();
+            const participantIds = [EmployeeID, ...hrAndAdmins.map((u) => u._id)];
+            const dateRange = normalizedStartDate && normalizedEndDate
+                ? ` (${new Date(normalizedStartDate).toDateString()} - ${new Date(normalizedEndDate).toDateString()})`
+                : "";
+            await RequestRoom.create({
+                title: `Leave Request: ${LeaveType}${dateRange}`,
+                description: Reason,
+                requestType: "leave",
+                leaveType: LeaveType,
+                requestData: { startDate: normalizedStartDate, endDate: normalizedEndDate, isHalfDay: IsHalfDay, isFirstHalf: IsFirstHalf },
+                status: "pending",
+                createdBy: EmployeeID,
+                participants: participantIds,
+                relatedLeaveId: leaveApp._id,
+            });
+            console.log(`[Employee] RequestRoom created for leave ${leaveApp._id}`);
+        } catch (roomErr) {
+            console.warn("[Employee] RequestRoom creation failed (non-blocking):", roomErr.message);
+        }
+
         res.status(200).json({
             status: "Success",
             message: "Leave application submitted successfully.",
@@ -743,6 +769,15 @@ exports.approveActivity = async (req, res) => {
                     updated.StartDate && updated.EndDate
                         ? ` (${new Date(updated.StartDate).toDateString()} - ${new Date(updated.EndDate).toDateString()})`
                         : "";
+                let room = null;
+                try {
+                    room = await RequestRoom.findOneAndUpdate(
+                        { relatedLeaveId: updated._id },
+                        { status: isReject ? "rejected" : "approved" }
+                    );
+                } catch (roomErr) {
+                    console.warn("[Employee] RequestRoom update failed (non-blocking):", roomErr.message);
+                }
                 await notifyUser({
                     recipient: updated.EmployeeID,
                     category: "leave",
@@ -753,6 +788,7 @@ exports.approveActivity = async (req, res) => {
                         ? `Your ${updated.LeaveType} leave${dateRange} was rejected by ${approverName}.${Reason ? " Reason: " + Reason : ""}`
                         : `Your ${updated.LeaveType} leave${dateRange} has been approved by ${approverName}.`,
                     sentBy: approverID,
+                    relatedRoomId: room?._id || null,
                 });
             }
         }

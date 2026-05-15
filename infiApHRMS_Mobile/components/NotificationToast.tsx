@@ -38,39 +38,46 @@ export const NotificationToast: React.FC = () => {
   };
 
   return (
-    <Animated.View
-      entering={FadeInUp.duration(280)}
-      exiting={FadeOutUp.duration(220)}
-      style={styles.wrapper}
-      pointerEvents="box-none"
-    >
-      <Pressable style={styles.card} onPress={handlePress} android_ripple={{ color: '#f1f5f9' }}>
-        <View style={[styles.iconBox, { backgroundColor: meta.bg }]}>
-          <Ionicons name={meta.name} size={22} color={meta.color} />
-        </View>
-        <View style={styles.body}>
-          <Text style={styles.title} numberOfLines={1}>
-            {toast.title}
-          </Text>
-          <Text style={styles.message} numberOfLines={2}>
-            {toast.message || toast.description}
-          </Text>
-        </View>
-        <Pressable hitSlop={8} onPress={dismissToast} style={styles.closeBtn}>
-          <Ionicons name="close" size={18} color="#94a3b8" />
+    <View style={styles.overlay} pointerEvents="box-none">
+      <Animated.View
+        entering={FadeInUp.duration(280)}
+        exiting={FadeOutUp.duration(220)}
+        style={styles.wrapper}
+        pointerEvents="box-none"
+      >
+        <Pressable style={styles.card} onPress={handlePress} android_ripple={{ color: '#f1f5f9' }}>
+          <View style={[styles.iconBox, { backgroundColor: meta.bg }]}>
+            <Ionicons name={meta.name} size={22} color={meta.color} />
+          </View>
+          <View style={styles.body}>
+            <Text style={styles.title} numberOfLines={1}>
+              {toast.title}
+            </Text>
+            <Text style={styles.message} numberOfLines={2}>
+              {toast.message || toast.description}
+            </Text>
+          </View>
+          <Pressable hitSlop={8} onPress={dismissToast} style={styles.closeBtn}>
+            <Ionicons name="close" size={18} color="#94a3b8" />
+          </Pressable>
         </Pressable>
-      </Pressable>
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 99999,
+    elevation: 99999,
+  },
   wrapper: {
     position: 'absolute',
     top: Platform.OS === 'ios' ? 56 : 24,
     left: 12,
     right: 12,
-    zIndex: 9999,
+    zIndex: 99999,
     elevation: 20,
   },
   card: {

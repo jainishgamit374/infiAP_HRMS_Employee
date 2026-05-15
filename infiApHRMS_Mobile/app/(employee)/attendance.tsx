@@ -6,7 +6,9 @@ import { BottomNav } from '../../components/BottomNav';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import Header from '../../components/layout/Header';
 import { useAttendanceSession } from '../../hooks/useAttendanceSession';
-import { submitEmployeePunch } from '../../services/auth';
+import { submitEmployeePunch, fetchAttendanceHistory } from '../../services/auth';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { getExactCurrentLocation, formatExactLocationLabel } from '../../utils/location';
 
 // ── Types ──
@@ -35,9 +37,7 @@ interface CorrectionRequest {
 const DEPARTMENTS = ['All', 'Engineering', 'Design', 'Product', 'Sales', 'HR'];
 
 // Fetch records from backend API instead of using static data
-const generateRecords = (): AttendanceRecord[] => {
-  return [];
-};
+const generateRecords = (): AttendanceRecord[] => [];
 
 // Fetch corrections from backend API instead of using static data
 const INITIAL_CORRECTIONS: CorrectionRequest[] = [];
@@ -48,7 +48,7 @@ type CorrectionTab = 'Pending' | 'Approved' | 'Rejected';
 
 export default function AttendancePage() {
   // State
-  const [allRecords] = useState<AttendanceRecord[]>(generateRecords);
+  const [allRecords, setAllRecords] = useState<AttendanceRecord[]>([]);
   const [corrections, setCorrections] = useState<CorrectionRequest[]>(INITIAL_CORRECTIONS);
   const [activeTab, setActiveTab] = useState<TimeTab>('Daily');
   const [selectedDept, setSelectedDept] = useState('All');
@@ -144,6 +144,98 @@ export default function AttendancePage() {
     setSelectedIds([]);
     Alert.alert('✅ Bulk Approved', `${selectedIds.length} requests approved.`);
   }, [selectedIds]);
+
+  // ── Load attendance from API ──
+  React.useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const res = await fetchAttendanceHistory();
+        // res.data should have { summary, records }
+        const recs: any[] = (res && (res as any).data && Array.isArray((res as any).data.records))
+          ? (res as any).data.records
+          : [];
+
+        if (!isMounted) return;
+
+        const mapped: AttendanceRecord[] = recs.map(r => ({
+          id: String(r.id ?? r._id ?? `${r.date}-${Math.random()}`),
+          date: r.date || r.PunchDate || r.day || r.recordDate || r.createdAt || '',
+          checkIn: r.checkInTime || r.CheckInTime || r.checkIn || r.in || '--',
+          checkOut: r.checkOutTime || r.CheckOutTime || r.checkOut || r.out || '--',
+          status: (r.status && (['Present','Absent','Late','Half Day'] as string[]).includes(r.status) ? r.status : (r.AttendanceStatus || 'Present')) as AttendanceRecord['status'],
+          hoursWorked: r.duration || r.hoursWorked || r.totalHours || '--',
+          department: r.department || r.dept || 'General',
+        }));
+
+        setAllRecords(mapped);
+      } catch (error) {
+        console.warn('Failed to load attendance:', error);
+      }
+    })();
+
+    return () => { isMounted = false; };
+  }, []);
+
+  // ── Report PDF generation ──
+  const buildReportHtml = (title: string, records: AttendanceRecord[], statsObj: any) => `
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          body{font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial; color:#0f172a; padding:20px}
+          .brand{font-weight:800;color:#007AFF;font-size:20px}
+          .meta{color:#64748b;margin-top:6px}
+          table{width:100%;border-collapse:collapse;margin-top:16px}
+          th,td{padding:10px;border:1px solid #e6edf3;text-align:left}
+          th{background:#f1f5f9}
+          .center{text-align:center}
+          .stats{display:flex;gap:12px;margin-top:12px}
+          .stat{background:#f8fafc;padding:12px;border-radius:8px;flex:1}
+        </style>
+      </head>
+      <body>
+        <div class="brand">infiAp HRMS — ${title}</div>
+        <div class="meta">Generated: ${new Date().toLocaleString()}</div>
+        <div class="stats">
+          <div class="stat"><div><strong>Attendance Rate</strong></div><div>${statsObj.attendanceRate}%</div></div>
+          <div class="stat"><div><strong>Present</strong></div><div>${statsObj.present}</div></div>
+          <div class="stat"><div><strong>Late</strong></div><div>${statsObj.late}</div></div>
+          <div class="stat"><div><strong>Absent</strong></div><div>${statsObj.absent}</div></div>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Department</th><th>Check In</th><th>Check Out</th><th>Hours</th><th class="center">Status</th></tr>
+          </thead>
+          <tbody>
+            ${records.map(r => `<tr><td>${r.date}</td><td>${r.department}</td><td>${r.checkIn}</td><td>${r.checkOut}</td><td>${r.hoursWorked}</td><td class="center">${r.status}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const exportReportPdf = async (useFiltered = true) => {
+    try {
+      setReportLoading(true);
+      const recordsToExport = useFiltered ? filteredRecords : allRecords;
+      const html = buildReportHtml(`${activeTab} — ${selectedDept}`, recordsToExport, stats);
+      const { uri } = await Print.printToFileAsync({ html });
+      const available = await Sharing.isAvailableAsync();
+      if (available) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Attendance Report', UTI: 'com.adobe.pdf' });
+      } else {
+        // Fallback: open print dialog
+        await Print.printAsync({ html });
+      }
+      setReportVisible(false);
+    } catch (err) {
+      Alert.alert('Export Failed', err instanceof Error ? err.message : String(err));
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
@@ -423,99 +515,7 @@ export default function AttendancePage() {
         </View>
 
         {/* ═══ CORRECTION REQUESTS ═══ */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>CORRECTION REQUESTS</Text>
-          <View style={styles.tabRow}>
-            {(['Pending', 'Approved', 'Rejected'] as CorrectionTab[]).map(tab => {
-              const count = corrections.filter(c => c.status === tab).length;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  style={[styles.tabBtn, correctionTab === tab && styles.tabBtnActive]}
-                  onPress={() => setCorrectionTab(tab)}
-                >
-                  <Text style={[styles.tabBtnText, correctionTab === tab && styles.tabBtnTextActive]}>{tab} ({count})</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Bulk Action */}
-          {correctionTab === 'Pending' && filteredCorrections.length > 0 && (
-            <View style={styles.bulkRow}>
-              <TouchableOpacity style={styles.bulkBtn} onPress={handleBulkApprove}>
-                <Ionicons name="checkmark-done" size={18} color="#fff" />
-                <Text style={styles.bulkBtnText}>Approve Selected ({selectedIds.length})</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Correction List */}
-          {filteredCorrections.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="checkmark-circle-outline" size={48} color="#cbd5e1" />
-              <Text style={styles.emptyText}>No {correctionTab.toLowerCase()} requests</Text>
-            </View>
-          ) : (
-            filteredCorrections.map((correction, idx) => {
-              const sc = getStatusColor(correction.status === 'Pending' ? 'Late' : correction.status === 'Approved' ? 'Present' : 'Absent');
-              return (
-                <Animated.View key={correction.id} entering={FadeInDown.delay(idx * 80).duration(300)} style={styles.correctionCard}>
-                  {correctionTab === 'Pending' && (
-                    <TouchableOpacity style={styles.checkbox} onPress={() => toggleSelect(correction.id)}>
-                      <Ionicons
-                        name={selectedIds.includes(correction.id) ? 'checkbox' : 'square-outline'}
-                        size={22}
-                        color={selectedIds.includes(correction.id) ? '#007AFF' : '#cbd5e1'}
-                      />
-                    </TouchableOpacity>
-                  )}
-                  <View style={styles.correctionBody}>
-                    <View style={styles.correctionHeader}>
-                      <View>
-                        <Text style={styles.correctionDate}>{correction.date}</Text>
-                        <Text style={styles.correctionType}>{correction.type} Correction</Text>
-                      </View>
-                      <View style={[styles.recordBadge, { backgroundColor: sc.bg }]}>
-                        <Text style={[styles.recordBadgeText, { color: sc.text }]}>{correction.status}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.correctionTimes}>
-                      <View style={styles.correctionTimeItem}>
-                        <Text style={styles.correctionTimeLabel}>Original</Text>
-                        <Text style={styles.correctionTimeValue}>{correction.originalTime}</Text>
-                      </View>
-                      <Ionicons name="arrow-forward" size={16} color="#94a3b8" />
-                      <View style={styles.correctionTimeItem}>
-                        <Text style={styles.correctionTimeLabel}>Requested</Text>
-                        <Text style={[styles.correctionTimeValue, { color: '#007AFF' }]}>{correction.requestedTime}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.correctionReason} numberOfLines={2}>Reason: {correction.reason}</Text>
-
-                    {/* Action Buttons */}
-                    {correction.status === 'Pending' && (
-                      <View style={styles.correctionActions}>
-                        <TouchableOpacity style={styles.approveBtn} onPress={() => handleApprove(correction.id)}>
-                          <Ionicons name="checkmark" size={16} color="#fff" />
-                          <Text style={styles.approveBtnText}>Approve</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.rejectBtn} onPress={() => handleRejectPress(correction.id)}>
-                          <Ionicons name="close" size={16} color="#ef4444" />
-                          <Text style={styles.rejectBtnText}>Reject</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.reviewBtn} onPress={() => handleReview(correction)}>
-                          <Ionicons name="eye-outline" size={16} color="#007AFF" />
-                          <Text style={styles.reviewBtnText}>Review</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                </Animated.View>
-              );
-            })
-          )}
-        </View>
+       
 
         {/* Shift & Schedule */}
         <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.shiftCard}>
@@ -600,15 +600,12 @@ export default function AttendancePage() {
             </View>
 
             <View style={styles.exportRow}>
-              <TouchableOpacity style={styles.exportBtn} onPress={() => { Alert.alert('📄 PDF', 'Report exported as PDF'); setReportVisible(false); }}>
-                <Ionicons name="document-outline" size={18} color="#007AFF" />
+              <TouchableOpacity style={styles.exportBtn} onPress={() => exportReportPdf(true)} disabled={reportLoading}>
+                {reportLoading ? <ActivityIndicator size="small" color="#007AFF" /> : <Ionicons name="document-outline" size={18} color="#007AFF" />}
                 <Text style={styles.exportBtnText}>PDF</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.exportBtn} onPress={() => { Alert.alert('📋 CSV', 'Report exported as CSV'); setReportVisible(false); }}>
-                <Ionicons name="grid-outline" size={18} color="#007AFF" />
-                <Text style={styles.exportBtnText}>CSV</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.exportBtn} onPress={() => { Alert.alert('🔗 Share', 'Report sharing initiated'); setReportVisible(false); }}>
+
+              <TouchableOpacity style={styles.exportBtn} onPress={() => exportReportPdf(true)}>
                 <Ionicons name="share-outline" size={18} color="#007AFF" />
                 <Text style={styles.exportBtnText}>Share</Text>
               </TouchableOpacity>

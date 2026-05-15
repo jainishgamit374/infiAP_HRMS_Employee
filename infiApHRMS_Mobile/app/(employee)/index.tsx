@@ -442,7 +442,7 @@ export default function EmployeeDashboard() {
                   route="/(employee)/upcoming-wfh"
                   delay={200}
                 />
-                <FeatureCard
+                {/* <FeatureCard
                   icon="megaphone-outline"
                   title="Events"
                   sub="Explore"
@@ -450,7 +450,7 @@ export default function EmployeeDashboard() {
                   bgColor="#fff7ed"
                   route="/(employee)/events"
                   delay={300}
-                />
+                /> */}
                 <FeatureCard
                   icon="cash-outline"
                   title="Payroll"
@@ -458,7 +458,7 @@ export default function EmployeeDashboard() {
                   color="#4f46e5"
                   bgColor="#f5f3ff"
                   route="/(employee)/payroll"
-                  delay={400}
+                  delay={300}
                 />
                 <FeatureCard
                   icon="trending-up-outline"
@@ -467,7 +467,7 @@ export default function EmployeeDashboard() {
                   color="#6366f1"
                   bgColor="#f5f3ff"
                   route="/(employee)/performance"
-                  delay={500}
+                  delay={400}
                 />
                 <FeatureCard
                   icon="notifications-outline"
@@ -476,7 +476,7 @@ export default function EmployeeDashboard() {
                   color="#ef4444"
                   bgColor="#fef2f2"
                   route="/(employee)/notifications"
-                  delay={600}
+                  delay={500}
                   unreadCount={unreadCount}
                 />
               </View>

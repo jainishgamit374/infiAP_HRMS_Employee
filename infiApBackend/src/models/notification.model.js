@@ -69,6 +69,11 @@ const notificationSchema = new mongoose.Schema(
         sentBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User"
+        },
+        relatedRoomId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "RequestRoom",
+            index: true
         }
     },
     { timestamps: true }

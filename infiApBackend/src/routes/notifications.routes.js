@@ -8,6 +8,8 @@ router.get("/me", verifyJWT, notificationsController.getMyNotifications);
 router.patch("/me/read-all", verifyJWT, notificationsController.markAllRead);
 router.patch("/:id/read", verifyJWT, notificationsController.markNotificationRead);
 
+router.post("/push-token", verifyJWT, notificationsController.registerPushToken);
+
 router.get("/", notificationsController.getNotifications);
 router.get("/:id", notificationsController.getNotificationById);
 

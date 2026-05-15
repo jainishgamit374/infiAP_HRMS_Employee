@@ -141,6 +141,9 @@ export const hrService = {
   createRecruitmentJob: (data) =>
     apiClient.post("/hr/recruitment/jobs", data).then(r => r.data),
 
+  addRecruitmentRequirement: (id, data) =>
+    apiClient.post(`/hr/recruitment/jobs/${id}/requirements`, data).then(r => r.data),
+
   // --- Profile Update (Multipart) ---
   updateProfile: async (employeeId, profileData, imageFile) => {
     const formData = new FormData();

@@ -12,6 +12,8 @@ const SalaryStructure = require("../models/salaryStructure.model");
 const Notification = require("../models/notification.model");
 const Performance = require("../models/performance.model");
 const Resignation = require("../models/resignation.model");
+const RequestRoom = require("../models/requestRoom.model");
+const { notifyUser } = require("../utils/notifier");
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const DEPARTMENT_CATEGORIES = ["tech", "ui/ux", "social media", "developers", "rnd"];
@@ -2254,6 +2256,31 @@ exports.handleLeaveAction = async (req, res) => {
         if (!leave) {
             return res.status(404).json({ success: false, message: "Leave request not found" });
         }
+
+        const isReject = nextStatus === "Rejected";
+        const approverName = req.user?.name || "Admin";
+        const dateRange = leave.StartDate && leave.EndDate
+            ? ` (${new Date(leave.StartDate).toDateString()} - ${new Date(leave.EndDate).toDateString()})`
+            : "";
+        let room = null;
+        try {
+            room = await RequestRoom.findOneAndUpdate(
+                { relatedLeaveId: leave._id },
+                { status: isReject ? "rejected" : "approved" }
+            );
+        } catch (roomErr) {
+            console.warn("[Admin] RequestRoom update failed (non-blocking):", roomErr.message);
+        }
+        await notifyUser({
+            recipient: leave.EmployeeID,
+            category: "leave",
+            headline: isReject ? "Leave Request Rejected" : "Leave Request Approved",
+            details: isReject
+                ? `Your ${leave.LeaveType} leave${dateRange} was rejected by ${approverName}.`
+                : `Your ${leave.LeaveType} leave${dateRange} has been approved by ${approverName}.`,
+            sentBy: req.user?._id,
+            relatedRoomId: room?._id || null,
+        });
 
         res.status(200).json({ success: true, data: leave });
     } catch (error) {

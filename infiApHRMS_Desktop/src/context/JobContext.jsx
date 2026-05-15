@@ -37,6 +37,7 @@ export const JobProvider = ({ children }) => {
         status: job.status || 'Active',
         applicants: Number(job.applicants) || 0,
         postedDate: job.postedDate || job.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        requirements: Array.isArray(job.requirements) ? job.requirements : [],
       }));
       setJobs(data);
     } catch (err) {
@@ -80,6 +81,7 @@ export const JobProvider = ({ children }) => {
         deadline: newJob.deadline,
         description: newJob.description,
         skills: newJob.skills,
+        requirements: newJob.requirements || newJob.skills || [],
         status: 'Open',
       });
 

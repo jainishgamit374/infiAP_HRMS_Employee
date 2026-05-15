@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Punch = require("../models/punch.model");
 const LeaveApplication = require("../models/leaveApplication.model");
+const LeaveBalance = require("../models/leaveBalance.model");
+const RequestRoom = require("../models/requestRoom.model");
 const Candidate = require("../models/candidate.model");
 const Performance = require("../models/performance.model");
 const Payroll = require("../models/payroll.model");
@@ -9,6 +11,7 @@ const Resignation = require("../models/resignation.model");
 const Holiday = require("../models/holiday.model");
 const Job = require("../models/job.model");
 const logger = require("../utils/logger");
+const { notifyUser } = require("../utils/notifier");
 
 // ---> Welcome Page Greeting <---
 exports.getDashboardSummary = async (req, res) => {
@@ -1002,13 +1005,73 @@ exports.approveLeave = async (req, res) => {
     try {
         const { leaveId, status } = req.body; // status: "Approved" or "Rejected"
         const statusId = status === "Approved" ? 1 : 2;
-        const updated = await LeaveApplication.findByIdAndUpdate(
-            leaveId,
-            { ApprovalStatus: status, ApprovalStatusID: statusId, ApproverID: req.user?._id, ApprovalUsername: req.user?.name },
-            { new: true }
-        );
-        if (!updated) return res.status(404).json({ success: false, message: "Leave application not found" });
-        res.status(200).json({ success: true, message: `Leave ${status}`, data: updated });
+
+        const leave = await LeaveApplication.findById(leaveId);
+        if (!leave) return res.status(404).json({ success: false, message: "Leave application not found" });
+
+        const previousStatus = leave.ApprovalStatus;
+
+        // Update leave application
+        leave.ApprovalStatus = status;
+        leave.ApprovalStatusID = statusId;
+        leave.ApproverID = req.user?._id;
+        leave.ApprovalUsername = req.user?.name;
+        await leave.save();
+
+        // Calculate leave days
+        let days = 0.5;
+        if (!leave.IsHalfDay) {
+            const diffTime = Math.abs(leave.EndDate - leave.StartDate);
+            days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        }
+
+        // Map LeaveType to balance key
+        const typeLower = leave.LeaveType.toLowerCase();
+        let balanceKey = null;
+        if (typeLower.includes('privilege') || typeLower.includes('pl')) balanceKey = 'PL';
+        else if (typeLower.includes('casual') || typeLower.includes('cl')) balanceKey = 'CL';
+        else if (typeLower.includes('sick') || typeLower.includes('sl')) balanceKey = 'SL';
+
+        // Adjust leave balance
+        if (balanceKey) {
+            const balance = await LeaveBalance.findOne({ userId: leave.EmployeeID });
+            if (balance) {
+                if (status === 'Approved' && previousStatus !== 'Approved') {
+                    balance[balanceKey] = Math.max(0, balance[balanceKey] - days);
+                    await balance.save();
+                } else if (status === 'Rejected' && previousStatus === 'Approved') {
+                    balance[balanceKey] = balance[balanceKey] + days;
+                    await balance.save();
+                }
+            }
+        }
+
+        const isReject = status === "Rejected";
+        const approverName = req.user?.name || "HR";
+        const dateRange = leave.StartDate && leave.EndDate
+            ? ` (${new Date(leave.StartDate).toDateString()} - ${new Date(leave.EndDate).toDateString()})`
+            : "";
+        let room = null;
+        try {
+            room = await RequestRoom.findOneAndUpdate(
+                { relatedLeaveId: leave._id },
+                { status: isReject ? "rejected" : "approved" }
+            );
+        } catch (roomErr) {
+            console.warn("[HR] RequestRoom update failed (non-blocking):", roomErr.message);
+        }
+        await notifyUser({
+            recipient: leave.EmployeeID,
+            category: "leave",
+            headline: isReject ? "Leave Request Rejected" : "Leave Request Approved",
+            details: isReject
+                ? `Your ${leave.LeaveType} leave${dateRange} was rejected by ${approverName}.`
+                : `Your ${leave.LeaveType} leave${dateRange} has been approved by ${approverName}.`,
+            sentBy: req.user?._id,
+            relatedRoomId: room?._id || null,
+        });
+
+        res.status(200).json({ success: true, message: `Leave ${status}`, data: leave });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -1283,6 +1346,35 @@ exports.addJob = async (req, res) => {
         const job = new Job(req.body);
         await job.save();
         res.status(201).json({ success: true, message: "Job posted", data: job });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+exports.addRecruitmentRequirement = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const requirementValue = typeof req.body.requirement === "string"
+            ? req.body.requirement.trim()
+            : Array.isArray(req.body.requirements) && req.body.requirements.length
+                ? String(req.body.requirements[0]).trim()
+                : "";
+
+        if (!requirementValue) {
+            return res.status(400).json({ success: false, message: "Requirement is required" });
+        }
+
+        const job = await Job.findByIdAndUpdate(
+            id,
+            { $addToSet: { requirements: requirementValue } },
+            { new: true }
+        );
+
+        if (!job) {
+            return res.status(404).json({ success: false, message: "Job not found" });
+        }
+
+        res.status(200).json({ success: true, message: "Requirement added", data: job });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -1614,8 +1706,19 @@ exports.getPayslip = async (req, res) => {
 // ---> HR Operations: Resignation <---
 exports.submitResignation = async (req, res) => {
     try {
-        const { userId, reason, noticePeriodDays } = req.body;
-        const reqData = new Resignation({ userId, reason, noticePeriodDays });
+        const { userId, employeeId, reason, noticePeriodDays, lastWorkingDate } = req.body;
+        const effectiveUserId = userId || employeeId;
+
+        if (!effectiveUserId || !reason) {
+            return res.status(400).json({ success: false, message: "userId and reason are required" });
+        }
+
+        const reqData = new Resignation({
+            userId: effectiveUserId,
+            reason,
+            noticePeriodDays: Number.isFinite(Number(noticePeriodDays)) ? Number(noticePeriodDays) : 30,
+            lastWorkingDate: lastWorkingDate || undefined
+        });
         await reqData.save();
         res.status(201).json({ success: true, message: "Resignation submitted", data: reqData });
     } catch (error) {

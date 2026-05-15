@@ -50,7 +50,8 @@ const PostJob = () => {
         e.preventDefault();
         addJob({
             ...formData,
-            skills
+            skills,
+            requirements: skills
         });
         setShowSuccess(true);
         setTimeout(() => {
@@ -183,7 +184,7 @@ const PostJob = () => {
                             <h3 className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.25em] mb-4">Role Description & Skills</h3>
                             
                             <div className="space-y-4">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Required Skills</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Requirements</label>
                                 <div className="w-full bg-slate-50 border border-slate-100 rounded-[32px] px-8 py-6 flex flex-wrap gap-3 shadow-inner">
                                     {skills.map(skill => (
                                         <span key={skill} className="bg-white border border-slate-100 text-slate-600 text-[10px] font-black px-5 py-2.5 rounded-xl flex items-center gap-2 group hover:border-indigo-200 transition-all shadow-sm">
@@ -197,7 +198,7 @@ const PostJob = () => {
                                     ))}
                                     <input 
                                         type="text"
-                                        placeholder="Add skill + Enter"
+                                        placeholder="Add requirement + Enter"
                                         className="bg-transparent border-none outline-none text-[10px] font-black text-slate-600 placeholder:text-slate-300 py-2 min-w-[150px] ml-2"
                                         value={skillInput}
                                         onChange={(e) => setSkillInput(e.target.value)}

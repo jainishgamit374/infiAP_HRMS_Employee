@@ -131,6 +131,7 @@ const mainAdminDashboardRouter = require("./routes/mainAdminDashboard.routes");
 const wfhRouter = require("./routes/wfh.routes");
 const eventRouter = require("./routes/event.routes");
 const notificationsRouter = require("./routes/notifications.routes");
+const requestRoomRouter = require("./routes/requestRoom.routes");
 
 // Routes Declaration
 app.use("/api/v1/auth", authRouter);
@@ -144,6 +145,7 @@ app.use("/api/v1/main-admin-dashboard", mainAdminDashboardRouter);
 app.use("/api/v1/wfh", wfhRouter);
 app.use("/api/v1/events", eventRouter);
 app.use("/api/v1/notifications", notificationsRouter);
+app.use("/api/v1/request-rooms", requestRoomRouter);
 
 // Basic health check
 app.get("/", (req, res) => {

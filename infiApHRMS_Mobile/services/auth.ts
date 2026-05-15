@@ -577,6 +577,7 @@ export type ApiNotification = {
   readAt?: string | null;
   isRead?: boolean;
   createdAt?: string;
+  relatedRoomId?: string | null;
 };
 
 export const fetchMyNotifications = async () => {

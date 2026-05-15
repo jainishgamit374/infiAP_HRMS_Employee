@@ -1,10 +1,18 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import * as Notifications from 'expo-notifications';
+import { router } from 'expo-router';
 import {
   fetchMyNotifications,
   markAllNotificationsRead as apiMarkAllRead,
   markNotificationRead as apiMarkRead,
   type ApiNotification,
 } from '../services/auth';
+import {
+  registerForPushNotificationsAsync,
+  registerPushToken,
+  configureNotificationHandler,
+  setupAndroidNotificationChannel,
+} from '../services/notifications';
 
 export type NotificationType = 'leave' | 'attendance' | 'payroll' | 'performance' | 'system';
 
@@ -28,6 +36,7 @@ export interface Notification {
   highlights?: string[];
   attachment?: NotificationAttachment;
   route?: string;
+  relatedRoomId?: string | null;
 }
 
 interface NotificationContextType {
@@ -92,6 +101,7 @@ const mapNotification = (record: ApiNotification, index: number): Notification =
     division: 'General',
     isOnline: true,
     route: getNotificationRoute(type),
+    relatedRoomId: record.relatedRoomId || null,
   };
 };
 
@@ -109,7 +119,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     try {
       setError(null);
       const response = await fetchMyNotifications();
+      console.log('[Notifications] API response:', JSON.stringify(response, null, 2));
       const records = Array.isArray(response.data) ? response.data : [];
+      console.log('[Notifications] Records count:', records.length);
       const mapped = records.map(mapNotification);
 
       // On first successful load, seed seenIds (no popup for existing items).
@@ -121,12 +133,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const newOnes = mapped.filter((n) => !seenIdsRef.current.has(n.id) && !n.isRead);
         newOnes.forEach((n) => seenIdsRef.current.add(n.id));
         if (newOnes.length > 0) {
+          console.log('[Notifications] New unread notification:', newOnes[0].title);
           setToast(newOnes[0]);
         }
       }
 
       setNotifications(mapped);
     } catch (fetchError) {
+      console.error('[Notifications] Fetch error:', fetchError);
       // Don't wipe existing list on transient error.
       setError(fetchError instanceof Error ? fetchError.message : 'Unable to load notifications.');
     } finally {
@@ -140,6 +154,75 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       refreshNotifications();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
+  }, [refreshNotifications]);
+
+  // Push notification setup
+  useEffect(() => {
+    let cleanup = () => {};
+
+    const setupPush = async () => {
+      configureNotificationHandler();
+      await setupAndroidNotificationChannel();
+
+      const token = await registerForPushNotificationsAsync();
+      console.log('[Push] Expo token:', token);
+      if (token) {
+        try {
+          await registerPushToken(token);
+          console.log('[Push] Token registered with backend');
+        } catch (e) {
+          console.warn('[Push] Failed to register token:', e);
+        }
+      }
+
+      // Foreground notification received
+      const foregroundSubscription = Notifications.addNotificationReceivedListener((event) => {
+        console.log('[Push] Foreground notification received:', event.request.content.title);
+        const data = event.request.content.data || {};
+        const pushNotification: Notification = {
+          id: String(data.notificationId || event.request.identifier),
+          type: getNotificationType(data.category as string),
+          title: event.request.content.title || 'Notification',
+          message: (event.request.content.body || '').slice(0, 120),
+          description: event.request.content.body || '',
+          time: 'Just now',
+          timestamp: new Date().toISOString(),
+          isRead: false,
+          sender: 'System',
+          division: 'General',
+          isOnline: true,
+          route: getNotificationRoute(getNotificationType(data.category as string)),
+        };
+        setToast(pushNotification);
+        refreshNotifications();
+      });
+
+      // Notification response (user tapped the notification)
+      const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data || {};
+        const relatedRoomId = String(data.relatedRoomId || '');
+        const notificationId = String(data.notificationId || '');
+        if (relatedRoomId) {
+          router.push({
+            pathname: '/(employee)/request-room-detail/[id]',
+            params: { id: relatedRoomId },
+          });
+        } else if (notificationId) {
+          router.push({
+            pathname: '/(employee)/notification-details/[id]',
+            params: { id: notificationId },
+          });
+        }
+      });
+
+      cleanup = () => {
+        foregroundSubscription.remove();
+        responseSubscription.remove();
+      };
+    };
+
+    setupPush();
+    return () => cleanup();
   }, [refreshNotifications]);
 
   const markAsRead = useCallback((id: string) => {

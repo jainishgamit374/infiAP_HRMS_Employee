@@ -11,7 +11,9 @@ import {
   X,
   LayoutDashboard,
   UserPlus,
-  ShieldCheck
+  ShieldCheck,
+  Plus,
+  ListChecks
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -20,7 +22,7 @@ import {
   Cell
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-import { getCandidateTracking, getRecruitmentJobs } from '../../../services/hrApi';
+import { addRecruitmentRequirement, getCandidateTracking, getRecruitmentJobs } from '../../../services/hrApi';
 
 const formatDate = (value, fallback = 'Pending') => {
   if (!value) return fallback;
@@ -73,6 +75,13 @@ const normalizeCandidateAction = (candidate, index) => {
   };
 };
 
+const normalizeJobRequirements = (job) => {
+  if (!job) return [];
+  return Array.isArray(job.requirements)
+    ? job.requirements.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+};
+
 const RecruitmentManagement = () => {
   const navigate = useNavigate();
   const [notification, setNotification] = useState(null);
@@ -92,6 +101,10 @@ const RecruitmentManagement = () => {
   const [interviewTotal, setInterviewTotal] = useState(0);
   const [selectedTotal, setSelectedTotal] = useState(0);
   const [unscheduledTotal, setUnscheduledTotal] = useState(0);
+  const [showRequirementDrawer, setShowRequirementDrawer] = useState(false);
+  const [requirementJobId, setRequirementJobId] = useState('');
+  const [requirementInput, setRequirementInput] = useState('');
+  const [savingRequirement, setSavingRequirement] = useState(false);
 
   const showNotification = (msg) => {
     setNotification(msg);
@@ -140,6 +153,12 @@ const RecruitmentManagement = () => {
     return () => { isMounted = false; };
   }, []);
 
+  useEffect(() => {
+    if (!requirementJobId && jobs.length) {
+      setRequirementJobId(jobs[0].id || jobs[0]._id || '');
+    }
+  }, [jobs, requirementJobId]);
+
   const COLORS = ['#8b5cf6', '#6366f1', '#3b82f6', '#10b981', '#f59e0b'];
 
   const tabs = ['Active', 'Review', 'History', 'Archives'];
@@ -149,6 +168,49 @@ const RecruitmentManagement = () => {
     { label: 'Selected Candidates', value: selectedTotal, icon: ShieldCheck, color: 'text-emerald-500', bg: 'bg-emerald-50' },
     { label: 'Unscheduled Interviews', value: unscheduledTotal, icon: Clock, color: 'text-orange-500', bg: 'bg-orange-50' },
   ];
+
+  const activeRequirementJob = jobs.find((job) => (job.id || job._id) === requirementJobId) || jobs[0] || null;
+  const activeRequirements = normalizeJobRequirements(activeRequirementJob);
+
+  const handleAddRequirement = async () => {
+    if (!activeRequirementJob || !requirementInput.trim()) return;
+
+    const requirement = requirementInput.trim();
+    setSavingRequirement(true);
+    try {
+      const response = await addRecruitmentRequirement(activeRequirementJob.id || activeRequirementJob._id, { requirement });
+      const updatedJob = response.data?.data || response.data?.job || response.data;
+      const normalizedRequirements = normalizeJobRequirements(updatedJob);
+
+      setJobs((prev) => prev.map((job) => {
+        const jobId = job.id || job._id;
+        const targetId = activeRequirementJob.id || activeRequirementJob._id;
+        if (jobId !== targetId) return job;
+        return {
+          ...job,
+          ...(updatedJob || {}),
+          requirements: normalizedRequirements.length
+            ? normalizedRequirements
+            : Array.from(new Set([...(normalizeJobRequirements(job)), requirement]))
+        };
+      }));
+      setRequirementInput('');
+      showNotification('Requirement added');
+    } catch (err) {
+      setJobs((prev) => prev.map((job) => {
+        const jobId = job.id || job._id;
+        const targetId = activeRequirementJob.id || activeRequirementJob._id;
+        if (jobId !== targetId) return job;
+        return {
+          ...job,
+          requirements: Array.from(new Set([...(normalizeJobRequirements(job)), requirement]))
+        };
+      }));
+      showNotification('Requirement saved locally');
+    } finally {
+      setSavingRequirement(false);
+    }
+  };
 
   const filteredActions = currentActions.filter((a) => {
     const query = searchQuery.toLowerCase();
@@ -219,6 +281,89 @@ const RecruitmentManagement = () => {
         </div>
       )}
 
+      {/* Requirements Drawer */}
+      {showRequirementDrawer && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowRequirementDrawer(false)} />
+          <div className="w-full max-w-md bg-white h-full shadow-xl flex flex-col">
+            <div className="p-6 border-b flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Requirement Board</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Add and review role requirements</p>
+              </div>
+              <button onClick={() => setShowRequirementDrawer(false)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              <section className="space-y-3">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Select Job</label>
+                <select
+                  value={requirementJobId}
+                  onChange={(e) => setRequirementJobId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-primary-300"
+                >
+                  {jobs.length ? jobs.map((job) => (
+                    <option key={job.id || job._id} value={job.id || job._id}>
+                      {job.title || 'Untitled role'}
+                    </option>
+                  )) : (
+                    <option value="">No jobs available</option>
+                  )}
+                </select>
+              </section>
+
+              <section className="space-y-3">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Add Requirement</label>
+                <textarea
+                  value={requirementInput}
+                  onChange={(e) => setRequirementInput(e.target.value)}
+                  placeholder="Example: 5+ years React, MUI, and payroll workflow experience"
+                  rows={4}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:border-primary-300 resize-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddRequirement}
+                  disabled={savingRequirement || !requirementInput.trim() || !activeRequirementJob}
+                  className="w-full py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {savingRequirement ? 'Saving...' : 'Add Requirement'}
+                </button>
+              </section>
+
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-slate-700">Current Requirements</h4>
+                  <span className="text-xs text-slate-400">{activeRequirements.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {activeRequirements.length ? activeRequirements.map((item, index) => (
+                    <div key={`${item}-${index}`} className="px-3 py-2 rounded-lg bg-slate-50 border border-slate-100 text-sm text-slate-600">
+                      {item}
+                    </div>
+                  )) : (
+                    <div className="px-3 py-3 rounded-lg bg-slate-50 border border-dashed border-slate-200 text-sm text-slate-400">
+                      No requirements have been added for this job yet.
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <div className="p-6 border-t bg-slate-50/50">
+              <button
+                onClick={() => setShowRequirementDrawer(false)}
+                className="w-full py-2.5 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div>
@@ -231,6 +376,13 @@ const RecruitmentManagement = () => {
             className="px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
           >
             Source Talent
+          </button>
+          <button
+            onClick={() => setShowRequirementDrawer(true)}
+            className="px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors inline-flex items-center gap-2"
+          >
+            <Plus size={16} />
+            Requirements
           </button>
           <button
             onClick={() => setShowConfigDrawer(true)}
@@ -285,6 +437,36 @@ const RecruitmentManagement = () => {
               </div>
             </div>
           ))}
+
+          {/* Requirement Snapshot */}
+          <div className="bg-white p-5 rounded-xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                  <ListChecks size={16} className="text-primary-500" />
+                  Requirements
+                </h4>
+                <p className="text-xs text-slate-400 mt-1">Shown from the selected job posting.</p>
+              </div>
+              <button
+                onClick={() => setShowRequirementDrawer(true)}
+                className="text-xs font-medium text-primary-600 hover:text-primary-700"
+              >
+                Add / view
+              </button>
+            </div>
+            <div className="space-y-2">
+              {activeRequirements.length ? (
+                activeRequirements.slice(0, 4).map((item, index) => (
+                  <div key={`${item}-${index}`} className="px-3 py-2 rounded-lg bg-slate-50 text-xs text-slate-600 border border-slate-100">
+                    {item}
+                  </div>
+                ))
+              ) : (
+                <p className="text-xs text-slate-400">No requirements added yet.</p>
+              )}
+            </div>
+          </div>
 
           {/* Alert Card */}
           <div className="bg-slate-900 p-5 rounded-xl text-white mt-auto">

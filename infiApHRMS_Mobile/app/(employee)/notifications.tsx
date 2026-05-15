@@ -39,11 +39,17 @@ export default function NotificationsPage() {
 
   const handleNotificationClick = (item: Notification) => {
     markAsRead(item.id);
-    // Navigate to details page with ID
-    router.push({
-      pathname: '/(employee)/notification-details/[id]',
-      params: { id: item.id }
-    });
+    if (item.relatedRoomId) {
+      router.push({
+        pathname: '/(employee)/request-room-detail/[id]',
+        params: { id: item.relatedRoomId },
+      });
+    } else {
+      router.push({
+        pathname: '/(employee)/notification-details/[id]',
+        params: { id: item.id },
+      });
+    }
   };
 
   return (

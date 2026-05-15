@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import { createResignation, getHrProfile } from '../../../services/hrApi';
+import { createResignation, getEmployees, getHrProfile } from '../../../services/hrApi';
 
 const reasons = [
   'Better Opportunity',
@@ -27,17 +27,34 @@ const getProfileData = (apiData, user) => ({
   designation: apiData?.professionalInfo?.designation || apiData?.header?.post || apiData?.designation || user?.designation || user?.role || ''
 });
 
+const getEmployeeOptionLabel = (employee) => {
+  const name = employee?.name || 'Unknown';
+  const email = employee?.email || 'no-email@example.com';
+  return `${name} (${email})`;
+};
+
+const mapEmployeeRecord = (employee) => ({
+  id: employee?.id || employee?._id || '',
+  employeeName: employee?.name || '',
+  employeeEmail: employee?.email || '',
+  employeeId: employee?.employeeId || employee?._id || '',
+  department: employee?.department || '',
+  designation: employee?.role || employee?.designation || ''
+});
+
 const SubmitResignation = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [profile, setProfile] = useState({
     employeeName: '',
+    employeeEmail: '',
     employeeId: '',
     department: '',
     designation: ''
   });
   const [formData, setFormData] = useState({
     employeeName: '',
+    employeeEmail: '',
     employeeId: '',
     department: '',
     designation: '',
@@ -46,6 +63,7 @@ const SubmitResignation = () => {
     reason: '',
     comments: ''
   });
+  const [employees, setEmployees] = useState([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profileError, setProfileError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,13 +116,87 @@ const SubmitResignation = () => {
     };
   }, [user]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadEmployees = async () => {
+      try {
+        const response = await getEmployees({ page: 1, limit: 500 });
+        const employeeList = Array.isArray(response.data?.data) ? response.data.data.map(mapEmployeeRecord) : [];
+
+        if (isMounted) {
+          setEmployees(employeeList);
+          const currentEmployee = employeeList.find((employee) => employee.employeeEmail === user?.email) || employeeList[0];
+          if (currentEmployee) {
+            setProfile((prev) => ({
+              ...prev,
+              ...currentEmployee
+            }));
+            setFormData((prev) => ({
+              ...prev,
+              ...currentEmployee,
+              employeeName: prev.employeeName || currentEmployee.employeeName,
+              employeeEmail: prev.employeeEmail || currentEmployee.employeeEmail,
+              employeeId: prev.employeeId || currentEmployee.employeeId,
+              department: prev.department || currentEmployee.department,
+              designation: prev.designation || currentEmployee.designation
+            }));
+          }
+        }
+      } catch (err) {
+        // keep profile fallback if employee list is unavailable
+      }
+    };
+
+    loadEmployees();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.email]);
+
+  const selectedEmployee = employees.find((employee) => employee.employeeEmail === formData.employeeEmail) || null;
+
+  const handleEmployeeSelect = (email) => {
+    const employee = employees.find((entry) => entry.employeeEmail === email);
+    if (!employee) {
+      setFormData((prev) => ({
+        ...prev,
+        employeeEmail: email,
+        employeeName: '',
+        employeeId: '',
+        department: '',
+        designation: ''
+      }));
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      employeeEmail: employee.employeeEmail,
+      employeeName: employee.employeeName,
+      employeeId: employee.employeeId,
+      department: employee.department,
+      designation: employee.designation
+    }));
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setIsSubmitting(true);
     setSubmitError('');
 
+    const noticePeriodDays = formData.noticeDate && formData.lastDay
+      ? Math.max(
+          Math.ceil((new Date(formData.lastDay).getTime() - new Date(formData.noticeDate).getTime()) / (1000 * 60 * 60 * 24)),
+          0
+        )
+      : 30;
+
     try {
       await createResignation({
+        userId: selectedEmployee?.id || selectedEmployee?._id || user?._id || user?.id || profile.employeeId,
+        employeeEmail: formData.employeeEmail,
         employeeName: formData.employeeName,
         employeeId: formData.employeeId,
         department: formData.department,
@@ -114,6 +206,7 @@ const SubmitResignation = () => {
         lastWorkingDay: formData.lastDay,
         lastWorkingDate: formData.lastDay,
         reason: formData.reason,
+        noticePeriodDays,
         comments: formData.comments
       });
       setSubmitted(true);
@@ -164,7 +257,7 @@ const SubmitResignation = () => {
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 flex-1 min-h-0">
         <div className="xl:col-span-2 bg-white border border-slate-100 rounded-3xl p-6 shadow-sm h-fit">
           <h2 className="text-lg font-black text-slate-900">Employee Details</h2>
-          <p className="text-sm text-slate-500 mt-1">Loaded from your HR profile. You can edit these fields for another employee.</p>
+          <p className="text-sm text-slate-500 mt-1">Choose an employee by email and the remaining fields will auto-fill.</p>
 
           {loadingProfile ? (
             <div className="py-10 flex items-center gap-3 text-sm font-bold text-slate-500">
@@ -182,6 +275,7 @@ const SubmitResignation = () => {
 
               {[
                 ['Default Name', profile.employeeName || 'N/A'],
+                ['Default Email', profile.employeeEmail || user?.email || 'N/A'],
                 ['Default Employee ID', profile.employeeId || 'N/A'],
                 ['Default Department', profile.department || 'N/A'],
                 ['Default Designation', profile.designation || 'N/A']
@@ -204,6 +298,23 @@ const SubmitResignation = () => {
               </div>
             )}
 
+            <label className="space-y-2 block">
+              <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Employee Email</span>
+              <select
+                required
+                value={formData.employeeEmail}
+                onChange={(event) => handleEmployeeSelect(event.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-slate-400"
+              >
+                <option value="">Select employee email</option>
+                {employees.map((employee) => (
+                  <option key={employee.id || employee.employeeEmail} value={employee.employeeEmail}>
+                    {getEmployeeOptionLabel(employee)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <label className="space-y-2">
                 <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Employee Name</span>
@@ -223,9 +334,9 @@ const SubmitResignation = () => {
                   type="text"
                   required
                   value={formData.employeeId}
-                  onChange={(event) => setFormData((prev) => ({ ...prev, employeeId: event.target.value }))}
-                  placeholder="Enter employee ID"
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-slate-400"
+                  readOnly
+                  placeholder="Auto-filled from selected email"
+                  className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-sm font-semibold text-slate-500 outline-none cursor-not-allowed"
                 />
               </label>
             </div>

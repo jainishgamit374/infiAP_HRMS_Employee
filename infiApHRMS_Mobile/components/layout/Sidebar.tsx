@@ -21,6 +21,7 @@ import Animated, {
 import { router, usePathname } from 'expo-router';
 import { useSidebar } from '../../context/SidebarContext';
 import { useUser } from '../../context/UserContext';
+import { useNotifications } from '../../context/NotificationContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { resolveImageSource } from '@/utils/image';
 import { signOutUser } from '@/services/auth';
@@ -37,6 +38,7 @@ const MENU_CONFIG = {
     { icon: 'grid-outline', label: 'Dashboard', route: '/(employee)/' },
     { icon: 'person-outline', label: 'My Profile', route: '/(employee)/profile' },
     { icon: 'calendar-outline', label: 'Leave Management', route: '/(employee)/leave' },
+    { icon: 'chatbubbles-outline', label: 'Request Rooms', route: '/(employee)/request-rooms' },
     { icon: 'time-outline', label: 'Attendance', route: '/(employee)/attendance' },
     { icon: 'cash-outline', label: 'Payroll', route: '/(employee)/payroll' },
     { icon: 'trending-up-outline', label: 'Performance', route: '/(employee)/performance' },
@@ -48,11 +50,13 @@ const MENU_CONFIG = {
 const Sidebar = () => {
   const { isOpen, closeSidebar } = useSidebar();
   const { user, clearUserSession } = useUser();
+  const { notifications } = useNotifications();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const progress = useSharedValue(0);
   const [isMounted, setIsMounted] = useState(isOpen);
 
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
   const menuItems = MENU_CONFIG.employee;
 
   useEffect(() => {
@@ -168,6 +172,7 @@ const Sidebar = () => {
           >
             {menuItems.map((item, index) => {
               const isActive = pathname === item.route || (item.route === '/(employee)/' && (pathname === '/(employee)' || pathname === '/(employee)/'));
+              const isNotifications = item.label === 'Notifications';
               return (
                 <TouchableOpacity
                   key={index}
@@ -185,6 +190,11 @@ const Sidebar = () => {
                   <Text style={[styles.menuLabel, isActive && styles.activeMenuLabel]}>
                     {item.label}
                   </Text>
+                  {isNotifications && unreadCount > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -371,6 +381,20 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
     fontWeight: '600',
+  },
+  badge: {
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
   },
 });
 

@@ -110,6 +110,7 @@ export const selectCandidate = (id) => put(`/recruitment/candidates/${id}/select
 export const sendCandidateOffer = (id, data) => post(`/recruitment/candidates/${id}/offer`, data);
 export const getRecruitmentJobs = (params) => get('/recruitment/jobs', params);
 export const createRecruitmentJob = (data) => post('/recruitment/jobs', data);
+export const addRecruitmentRequirement = (id, data) => post(`/recruitment/jobs/${id}/requirements`, data);
 
 // ─── 6. Performance ──────────────────────────────────────────────────────────
 export const getPerformanceDashboard = (params) => get('/performance/dashboard', params);
@@ -173,6 +174,7 @@ export default {
     sendCandidateOffer,
     getRecruitmentJobs,
     createRecruitmentJob,
+    addRecruitmentRequirement,
     getPerformanceDashboard,
     getPerformanceList,
     getFeedbackStats,

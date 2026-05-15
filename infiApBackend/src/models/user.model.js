@@ -145,7 +145,11 @@ const userSchema = new mongoose.Schema(
                 type: Boolean,
                 default: true
             }
-        }
+        },
+        expoPushTokens: [{
+            type: String,
+            trim: true
+        }]
     },
     { timestamps: true }
 );

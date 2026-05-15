@@ -56,6 +56,7 @@ router.put("/recruitment/candidates/:id/select", verifyRole(["hr", "admin", "sup
 router.post("/recruitment/candidates/:id/offer", verifyRole(["hr", "admin", "superadmin"]), hrController.sendOfferLetter);
 router.get("/recruitment/jobs", hrController.getJobs);
 router.post("/recruitment/jobs", verifyRole(["hr", "admin", "superadmin"]), hrController.addJob);
+router.post("/recruitment/jobs/:id/requirements", verifyRole(["hr", "admin", "superadmin"]), hrController.addRecruitmentRequirement);
 
 // -> Performance
 router.get("/performance/dashboard", hrController.getPerformanceDashboard);
